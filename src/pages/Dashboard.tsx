@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Flame, Target, DollarSign, BarChart3 } from "lucide-react";
+import { getStockQuote } from "@/api/finnhub";
 import { motion } from "framer-motion";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 
@@ -34,6 +36,40 @@ const card = (delay: number) => ({
 export default function Dashboard() {
   const cashBalance = 3474.12;
   const portfolioValue = 2700.96;
+  const [realTopStocks, setRealTopStocks] = useState(topStocks);
+  const [realHoldings, setRealHoldings] = useState(holdings);
+
+  useEffect(() => {
+    async function loadRealData() {
+      // Load top stocks
+      const updatedTopStocks = await Promise.all(
+        topStocks.map(async (stock) => {
+          try {
+            const data = await getStockQuote(stock.symbol);
+            return { ...stock, price: data.c, change: data.dp };
+          } catch {
+            return stock;
+          }
+        })
+      );
+      setRealTopStocks(updatedTopStocks);
+
+      // Load holdings
+      const updatedHoldings = await Promise.all(
+        holdings.map(async (holding) => {
+          try {
+            const data = await getStockQuote(holding.symbol);
+            return { ...holding, currentPrice: data.c };
+          } catch {
+            return holding;
+          }
+        })
+      );
+      setRealHoldings(updatedHoldings);
+    }
+    loadRealData();
+  }, []);
+
   const totalValue = cashBalance + portfolioValue;
   const profitPct = ((totalValue - 5000) / 5000) * 100;
   const confidence = 42;
@@ -100,7 +136,7 @@ export default function Dashboard() {
         <motion.div {...card(0.6)} className="glass-card p-5">
           <h2 className="font-display font-semibold text-foreground mb-4">Holdings</h2>
           <div className="space-y-3">
-            {holdings.map((h) => {
+            {realHoldings.map((h) => {
               const gain = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100;
               return (
                 <div key={h.symbol} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
@@ -138,7 +174,7 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {topStocks.map((stock) => (
+              {realTopStocks.map((stock) => (
                 <tr key={stock.symbol} className="border-b border-border/30 last:border-0">
                   <td className="py-3 font-display font-semibold text-foreground">{stock.symbol}</td>
                   <td className="py-3 text-muted-foreground">{stock.name}</td>

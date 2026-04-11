@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { getStockQuote } from "@/api/finnhub";
 import { TrendingUp, TrendingDown, Target } from "lucide-react";
 
 const holdings = [
@@ -12,8 +14,27 @@ const tradeHistory = [
 ];
 
 export default function Portfolio() {
+  const [realHoldings, setRealHoldings] = useState(holdings);
+
+  useEffect(() => {
+    async function loadRealData() {
+      const updatedHoldings = await Promise.all(
+        holdings.map(async (holding) => {
+          try {
+            const data = await getStockQuote(holding.symbol);
+            return { ...holding, currentPrice: data.c };
+          } catch {
+            return holding;
+          }
+        })
+      );
+      setRealHoldings(updatedHoldings);
+    }
+    loadRealData();
+  }, []);
+
   const cashBalance = 3474.12;
-  const portfolioValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
+  const portfolioValue = realHoldings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
   const totalValue = cashBalance + portfolioValue;
   const confidence = 42;
 
@@ -54,7 +75,7 @@ export default function Portfolio() {
       <div className="glass-card p-5">
         <h2 className="font-display font-semibold text-foreground mb-4">Holdings</h2>
         <div className="space-y-3">
-          {holdings.map((h) => {
+          {realHoldings.map((h) => {
             const gain = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100;
             const totalGain = (h.currentPrice - h.avgPrice) * h.shares;
             return (

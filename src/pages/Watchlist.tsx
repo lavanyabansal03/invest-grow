@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Star, TrendingUp, TrendingDown, Plus, X } from "lucide-react";
 import { motion } from "framer-motion";
+import { getStockQuote } from "@/api/finnhub";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
@@ -15,7 +16,24 @@ export default function Watchlist() {
   const [newSymbol, setNewSymbol] = useState("");
   const { toast } = useToast();
 
-  const addStock = () => {
+  useEffect(() => {
+    async function loadRealData() {
+      const updatedWatchlist = await Promise.all(
+        initialWatchlist.map(async (stock) => {
+          try {
+            const data = await getStockQuote(stock.symbol);
+            return { ...stock, price: data.c, change: data.dp };
+          } catch {
+            return stock;
+          }
+        })
+      );
+      setWatchlist(updatedWatchlist);
+    }
+    loadRealData();
+  }, []);
+
+  const addStock = async () => {
     if (!newSymbol.trim()) return;
     if (watchlist.length >= 5) {
       toast({ title: "Watchlist full", description: "Maximum 5 stocks allowed.", variant: "destructive" });
@@ -25,7 +43,20 @@ export default function Watchlist() {
       toast({ title: "Already added", description: "This stock is already in your watchlist.", variant: "destructive" });
       return;
     }
-    setWatchlist([...watchlist, { symbol: newSymbol.toUpperCase(), name: "Stock", price: 100 + Math.random() * 200, change: (Math.random() - 0.5) * 5 }]);
+
+    const sym = newSymbol.toUpperCase();
+    let price = 100;
+    let change = 0;
+
+    try {
+      const data = await getStockQuote(sym);
+      price = data.c;
+      change = data.dp;
+    } catch {
+      toast({ title: "Failed to fetch stock", description: "Could not fetch data from Finnhub API.", variant: "destructive" });
+    }
+
+    setWatchlist([...watchlist, { symbol: sym, name: sym, price, change }]);
     setNewSymbol("");
   };
 
