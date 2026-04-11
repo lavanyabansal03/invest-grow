@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, TrendingUp, TrendingDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
+import { getStockQuote } from "@/api/finnhub";
 
 const allStocks = [
   { symbol: "AAPL", name: "Apple Inc.", price: 189.84, change: 1.25 },
@@ -20,10 +21,41 @@ export default function Market() {
   const [selectedStock, setSelectedStock] = useState<typeof allStocks[0] | null>(null);
   const [buyMode, setBuyMode] = useState<"shares" | "dollars">("shares");
   const [buyAmount, setBuyAmount] = useState("");
+  const [stocksList, setStocksList] = useState(allStocks);
+
+  // Fetch real data on component mount
+  useEffect(() => {
+    async function loadRealPrices() {
+      const updated = await Promise.all(
+        allStocks.map(async (stock) => {
+          try {
+            const data = await getStockQuote(stock.symbol);
+            return {
+              ...stock,
+              price: data.c, // real current price
+              change: data.dp // real percent change
+            };
+          } catch (e) {
+            console.error(`Failed to fetch ${stock.symbol}`, e);
+            return stock; // fallback to mock
+          }
+        })
+      );
+      setStocksList(updated);
+
+      // Update selectedStock if one is currently selected
+      setSelectedStock((prev) => {
+        if (!prev) return prev;
+        return updated.find(s => s.symbol === prev.symbol) || prev;
+      });
+    }
+
+    loadRealPrices();
+  }, []);
 
   const filtered = query
-    ? allStocks.filter((s) => s.symbol.toLowerCase().includes(query.toLowerCase()) || s.name.toLowerCase().includes(query.toLowerCase()))
-    : allStocks;
+    ? stocksList.filter((s) => s.symbol.toLowerCase().includes(query.toLowerCase()) || s.name.toLowerCase().includes(query.toLowerCase()))
+    : stocksList;
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
@@ -51,9 +83,8 @@ export default function Market() {
               key={stock.symbol}
               whileHover={{ scale: 1.01 }}
               onClick={() => setSelectedStock(stock)}
-              className={`w-full glass-card p-4 flex items-center justify-between transition-all ${
-                selectedStock?.symbol === stock.symbol ? "border-primary/50" : ""
-              }`}
+              className={`w-full glass-card p-4 flex items-center justify-between transition-all ${selectedStock?.symbol === stock.symbol ? "border-primary/50" : ""
+                }`}
             >
               <div className="text-left">
                 <p className="font-display font-semibold text-foreground">{stock.symbol}</p>
