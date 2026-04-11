@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type ExperienceLevel = "beginner" | "intermediate" | "pro";
-type AgeGroup = "16-18" | "18-25" | "25+";
+type AgeGroup = "14-18" | "18+";
 
 const experienceOptions: { value: ExperienceLevel; label: string; emoji: string; desc: string }[] = [
   { value: "beginner", label: "Beginner", emoji: "🌱", desc: "Just starting out" },
@@ -16,17 +16,16 @@ const experienceOptions: { value: ExperienceLevel; label: string; emoji: string;
 ];
 
 const ageOptions: { value: AgeGroup; label: string }[] = [
-  { value: "16-18", label: "16 – 18" },
-  { value: "18-25", label: "18 – 25" },
-  { value: "25+", label: "25+" },
+  { value: "14-18", label: "14 – 18" },
+  { value: "18+", label: "18+" },
 ];
 
 function getStartingRange(experience: ExperienceLevel, age: AgeGroup): { min: number; max: number } {
-  if (age === "16-18") return { min: 500, max: 500 };
+  if (age === "14-18") return { min: 500, max: 500 };
   switch (experience) {
-    case "beginner": return { min: 1000, max: 2000 };
-    case "intermediate": return { min: 2000, max: 4000 };
-    case "pro": return { min: 3000, max: 5000 };
+    case "beginner": return { min: 500, max: 2000 };
+    case "intermediate": return { min: 500, max: 3000 };
+    case "pro": return { min: 500, max: 5000 };
   }
 }
 
