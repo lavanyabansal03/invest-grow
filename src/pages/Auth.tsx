@@ -13,6 +13,7 @@ export default function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -23,15 +24,37 @@ export default function Auth() {
 
     try {
       if (isSignup) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { username },
+            data: { username, age_group: ageGroup },
             emailRedirectTo: window.location.origin,
           },
         });
         if (error) throw error;
+
+        if (data.user) {
+          const createdAt = new Date().toISOString();
+
+          const { error: usersError } = await supabase.from("users").insert({
+            id: data.user.id,
+            username,
+            email,
+            created_at: createdAt,
+          });
+          if (usersError) throw usersError;
+
+          const { error: profileError } = await supabase.from("profiles").insert({
+            user_id: data.user.id,
+            age_group: ageGroup,
+            username,
+            onboarding_completed: false,
+          });
+
+          if (profileError) throw profileError;
+        }
+
         toast({
           title: "Account created!",
           description: "Check your email to verify your account, or continue if auto-confirmed.",
@@ -72,20 +95,33 @@ export default function Auth() {
         <div className="glass-card p-8">
           <form onSubmit={handleSubmit} className="space-y-4">
             {isSignup && (
-              <div className="space-y-2">
-                <Label htmlFor="username" className="text-foreground">Username</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="username" className="text-foreground">Username</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      id="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Choose a username"
+                      className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ageGroup" className="text-foreground">Age Group</Label>
                   <Input
-                    id="username"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Choose a username"
-                    className="pl-10 bg-secondary border-border text-foreground placeholder:text-muted-foreground"
+                    id="ageGroup"
+                    value={ageGroup}
+                    onChange={(e) => setAgeGroup(e.target.value)}
+                    placeholder="e.g. 18-24"
+                    className="bg-secondary border-border text-foreground placeholder:text-muted-foreground"
                     required
                   />
                 </div>
-              </div>
+              </>
             )}
             <div className="space-y-2">
               <Label htmlFor="email" className="text-foreground">Email</Label>
