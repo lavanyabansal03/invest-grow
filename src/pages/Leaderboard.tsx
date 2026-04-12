@@ -93,7 +93,7 @@ export default function Leaderboard() {
   const loading = profileLoading || holdingsLoading;
 
   return (
-    <div className="p-6 space-y-8 max-w-4xl mx-auto pb-16">
+    <div className="p-6 space-y-8 max-w-6xl mx-auto pb-16">
       <div className="flex items-center gap-3">
         <Trophy className="h-6 w-6 text-warning" />
         <h1 className="font-display text-2xl font-bold text-foreground">Leaderboard</h1>

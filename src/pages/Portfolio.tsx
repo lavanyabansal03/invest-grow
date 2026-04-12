@@ -73,7 +73,7 @@ export default function Portfolio() {
   const totalValue = cashBalance + portfolioValue;
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <h1 className="font-display text-2xl font-bold text-foreground">Portfolio</h1>
 
       <div className="grid sm:grid-cols-3 gap-4">
