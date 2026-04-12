@@ -7,4 +7,6 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   /** Backend origin only (no `/api`). Leave unset in dev to use Vite proxy. */
   readonly VITE_API_URL?: string;
+  /** Optional ElevenLabs voice id (Voice Lab) sent to `/api/elevenlabs/tts`; server can also set `ELEVENLABS_VOICE_ID`. */
+  readonly VITE_ELEVENLABS_VOICE_ID?: string;
 }
