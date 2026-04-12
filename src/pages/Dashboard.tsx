@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { TrendingUp, TrendingDown, Flame, Target, DollarSign, BarChart3 } from "lucide-react";
 import { getStockQuote } from "@/api/finnhub";
 import { motion } from "framer-motion";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
+import { useUserProfile, useHoldings } from "@/hooks/usePaperPortfolio";
+import { num } from "@/lib/money";
 
 const mockChartData = [
   { day: "Mon", value: 5000 },
@@ -17,14 +19,9 @@ const mockChartData = [
 const topStocks = [
   { symbol: "AAPL", name: "Apple Inc.", price: 189.84, change: 2.34 },
   { symbol: "MSFT", name: "Microsoft", price: 378.91, change: -1.12 },
-  { symbol: "GOOGL", name: "Alphabet", price: 141.80, change: 0.87 },
+  { symbol: "GOOGL", name: "Alphabet", price: 141.8, change: 0.87 },
   { symbol: "AMZN", name: "Amazon", price: 186.13, change: 3.21 },
   { symbol: "NVDA", name: "NVIDIA", price: 875.38, change: 12.45 },
-];
-
-const holdings = [
-  { symbol: "AAPL", shares: 5, avgPrice: 182.50, currentPrice: 189.84 },
-  { symbol: "NVDA", shares: 2, avgPrice: 850.00, currentPrice: 875.38 },
 ];
 
 const card = (delay: number) => ({
@@ -33,15 +30,32 @@ const card = (delay: number) => ({
   transition: { duration: 0.4, delay },
 });
 
+type HoldingView = {
+  symbol: string;
+  shares: number;
+  avgPrice: number;
+  currentPrice: number;
+};
+
 export default function Dashboard() {
-  const cashBalance = 3474.12;
-  const portfolioValue = 2700.96;
+  const { data: profile } = useUserProfile();
+  const { data: holdings = [] } = useHoldings();
+
   const [realTopStocks, setRealTopStocks] = useState(topStocks);
-  const [realHoldings, setRealHoldings] = useState(holdings);
+  const [realHoldings, setRealHoldings] = useState<HoldingView[]>([]);
+
+  const cashBalance = profile ? num(profile.cash_balance) : 0;
+  const startingCash = profile ? Math.max(num(profile.starting_cash), 1) : 1;
+  const confidence = profile?.confidence_score ?? 0;
+  const displayName = profile?.username?.trim() || profile?.email?.split("@")[0] || "Trader";
+
+  const holdingKey = useMemo(
+    () => holdings.map((h) => `${h.stock_symbol}:${h.shares}:${h.avg_buy_price}`).join("|"),
+    [holdings],
+  );
 
   useEffect(() => {
-    async function loadRealData() {
-      // Load top stocks
+    async function loadTop() {
       const updatedTopStocks = await Promise.all(
         topStocks.map(async (stock) => {
           try {
@@ -50,43 +64,59 @@ export default function Dashboard() {
           } catch {
             return stock;
           }
-        })
+        }),
       );
       setRealTopStocks(updatedTopStocks);
-
-      // Load holdings
-      const updatedHoldings = await Promise.all(
-        holdings.map(async (holding) => {
-          try {
-            const data = await getStockQuote(holding.symbol);
-            return { ...holding, currentPrice: data.c };
-          } catch {
-            return holding;
-          }
-        })
-      );
-      setRealHoldings(updatedHoldings);
     }
-    loadRealData();
+    loadTop();
   }, []);
 
+  useEffect(() => {
+    async function loadHoldings() {
+      if (!holdings.length) {
+        setRealHoldings([]);
+        return;
+      }
+      const rows = await Promise.all(
+        holdings.map(async (h) => {
+          const shares = num(h.shares);
+          const avgPrice = num(h.avg_buy_price);
+          let currentPrice = avgPrice;
+          try {
+            const data = await getStockQuote(h.stock_symbol);
+            currentPrice = data.c;
+          } catch {
+            /* keep avg */
+          }
+          return { symbol: h.stock_symbol, shares, avgPrice, currentPrice };
+        }),
+      );
+      setRealHoldings(rows);
+    }
+    loadHoldings();
+  }, [holdingKey, holdings]);
+
+  const portfolioValue = realHoldings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
   const totalValue = cashBalance + portfolioValue;
-  const profitPct = ((totalValue - 5000) / 5000) * 100;
-  const confidence = 42;
+  const profitPct = ((totalValue - startingCash) / startingCash) * 100;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground font-body">Welcome back, Trader!</p>
+        <p className="text-sm text-muted-foreground font-body">Welcome back, {displayName}!</p>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Cash Balance", value: `$${cashBalance.toLocaleString()}`, icon: DollarSign, color: "text-primary" },
-          { label: "Portfolio Value", value: `$${portfolioValue.toLocaleString()}`, icon: BarChart3, color: "text-info" },
-          { label: "Total Return", value: `${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(2)}%`, icon: profitPct >= 0 ? TrendingUp : TrendingDown, color: profitPct >= 0 ? "text-primary" : "text-destructive" },
+          { label: "Cash Balance", value: `$${cashBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, icon: DollarSign, color: "text-primary" },
+          { label: "Portfolio Value", value: `$${portfolioValue.toLocaleString(undefined, { maximumFractionDigits: 2 })}`, icon: BarChart3, color: "text-info" },
+          {
+            label: "Total Return",
+            value: `${profitPct >= 0 ? "+" : ""}${profitPct.toFixed(2)}%`,
+            icon: profitPct >= 0 ? TrendingUp : TrendingDown,
+            color: profitPct >= 0 ? "text-primary" : "text-destructive",
+          },
           { label: "Confidence", value: `${confidence}/100`, icon: Target, color: "text-warning" },
         ].map((stat, i) => (
           <motion.div key={stat.label} {...card(i * 0.1)} className="glass-card p-4">
@@ -99,19 +129,17 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Streak */}
       <motion.div {...card(0.4)} className="glass-card p-4 flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-warning/10 flex items-center justify-center">
           <Flame className="h-5 w-5 text-warning" />
         </div>
         <div>
-          <p className="font-display font-semibold text-foreground">3-Day Streak 🔥</p>
-          <p className="text-xs text-muted-foreground">Keep it up! Log in daily to grow your streak.</p>
+          <p className="font-display font-semibold text-foreground">Streak: {profile?.streak ?? 0} days</p>
+          <p className="text-xs text-muted-foreground">Log in daily to grow your streak (stored in Supabase).</p>
         </div>
       </motion.div>
 
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Portfolio Chart */}
         <motion.div {...card(0.5)} className="glass-card p-5 lg:col-span-2">
           <h2 className="font-display font-semibold text-foreground mb-4">Portfolio Performance</h2>
           <ResponsiveContainer width="100%" height={220}>
@@ -125,14 +153,18 @@ export default function Dashboard() {
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "hsl(215,12%,55%)", fontSize: 12 }} />
               <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(215,12%,55%)", fontSize: 12 }} domain={["auto", "auto"]} />
               <Tooltip
-                contentStyle={{ background: "hsl(220,18%,12%)", border: "1px solid hsl(220,14%,18%)", borderRadius: "8px", color: "hsl(210,20%,95%)" }}
+                contentStyle={{
+                  background: "hsl(220,18%,12%)",
+                  border: "1px solid hsl(220,14%,18%)",
+                  borderRadius: "8px",
+                  color: "hsl(210,20%,95%)",
+                }}
               />
               <Area type="monotone" dataKey="value" stroke="hsl(160,84%,39%)" fill="url(#colorValue)" strokeWidth={2} />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Holdings */}
         <motion.div {...card(0.6)} className="glass-card p-5">
           <h2 className="font-display font-semibold text-foreground mb-4">Holdings</h2>
           <div className="space-y-3">
@@ -147,20 +179,20 @@ export default function Dashboard() {
                   <div className="text-right">
                     <p className="text-sm font-medium text-foreground">${(h.currentPrice * h.shares).toFixed(2)}</p>
                     <p className={`text-xs ${gain >= 0 ? "text-primary" : "text-destructive"}`}>
-                      {gain >= 0 ? "+" : ""}{gain.toFixed(2)}%
+                      {gain >= 0 ? "+" : ""}
+                      {gain.toFixed(2)}%
                     </p>
                   </div>
                 </div>
               );
             })}
-            {holdings.length === 0 && (
+            {realHoldings.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-4">No holdings yet. Start trading!</p>
             )}
           </div>
         </motion.div>
       </div>
 
-      {/* Market Overview */}
       <motion.div {...card(0.7)} className="glass-card p-5">
         <h2 className="font-display font-semibold text-foreground mb-4">Market Overview — Top 5</h2>
         <div className="overflow-x-auto">
@@ -180,7 +212,8 @@ export default function Dashboard() {
                   <td className="py-3 text-muted-foreground">{stock.name}</td>
                   <td className="py-3 text-right text-foreground">${stock.price.toFixed(2)}</td>
                   <td className={`py-3 text-right font-medium ${stock.change >= 0 ? "text-primary" : "text-destructive"}`}>
-                    {stock.change >= 0 ? "+" : ""}{stock.change.toFixed(2)}
+                    {stock.change >= 0 ? "+" : ""}
+                    {stock.change.toFixed(2)}
                   </td>
                 </tr>
               ))}

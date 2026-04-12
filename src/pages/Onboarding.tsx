@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { TrendingUp, ChevronRight, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { confidenceScoreForLevel, type ExperienceLevel } from "@/lib/experience";
+import { formatPostgrestError } from "@/lib/supabase-errors";
 
-type ExperienceLevel = "beginner" | "intermediate" | "pro";
 type AgeGroup = "14-18" | "18+";
 
 const experienceOptions: { value: ExperienceLevel; label: string; emoji: string; desc: string }[] = [
@@ -23,9 +27,12 @@ const ageOptions: { value: AgeGroup; label: string }[] = [
 function getStartingRange(experience: ExperienceLevel, age: AgeGroup): { min: number; max: number } {
   if (age === "14-18") return { min: 500, max: 500 };
   switch (experience) {
-    case "beginner": return { min: 500, max: 2000 };
-    case "intermediate": return { min: 500, max: 3000 };
-    case "pro": return { min: 500, max: 5000 };
+    case "beginner":
+      return { min: 500, max: 2000 };
+    case "intermediate":
+      return { min: 500, max: 3000 };
+    case "pro":
+      return { min: 500, max: 5000 };
   }
 }
 
@@ -34,18 +41,96 @@ export default function Onboarding() {
   const [experience, setExperience] = useState<ExperienceLevel | null>(null);
   const [age, setAge] = useState<AgeGroup | null>(null);
   const [investment, setInvestment] = useState("");
+  const [saving, setSaving] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) navigate("/auth", { replace: true });
+    });
+  }, [navigate]);
 
   const range = experience && age ? getStartingRange(experience, age) : null;
 
-  const handleFinish = () => {
-    let amount = parseInt(investment) || (range?.min ?? 1000);
-    if (range) {
-      amount = Math.max(range.min, Math.min(amount, range.max));
+  const handleFinish = async () => {
+    if (!experience || !age || !range) return;
+
+    let amount = parseInt(investment, 10) || range.min;
+    amount = Math.max(range.min, Math.min(amount, range.max));
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+      navigate("/auth");
+      return;
     }
-    // Store in localStorage for now (will be DB later)
-    localStorage.setItem("pt_onboarding", JSON.stringify({ experience, age, startingCash: amount }));
-    navigate("/dashboard");
+
+    setSaving(true);
+    try {
+      await supabase.auth.getSession();
+
+      const confidence_score = confidenceScoreForLevel(experience);
+      const username = (user.user_metadata?.username as string | undefined) ?? "";
+      const email = user.email ?? "";
+
+      const profilePayload = {
+        username,
+        email,
+        experience_level: experience,
+        age_group: age,
+        starting_cash: amount,
+        cash_balance: amount,
+        max_cap: range.max,
+        confidence_score,
+        onboarding_completed: true as const,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: existing, error: readErr } = await supabase
+        .from("profiles")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (readErr) {
+        toast({
+          title: "Could not load profile",
+          description: formatPostgrestError(readErr),
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (existing) {
+        const { error: upErr } = await supabase.from("profiles").update(profilePayload).eq("user_id", user.id);
+        if (upErr) {
+          toast({ title: "Save failed", description: formatPostgrestError(upErr), variant: "destructive" });
+          return;
+        }
+      } else {
+        const { error: insErr } = await supabase.from("profiles").insert({
+          user_id: user.id,
+          ...profilePayload,
+        });
+        if (insErr) {
+          toast({ title: "Save failed", description: formatPostgrestError(insErr), variant: "destructive" });
+          return;
+        }
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ["profile"] });
+      toast({ title: "You're all set!", description: "Your profile and starting cash are saved." });
+      navigate("/dashboard", { replace: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Could not save onboarding.";
+      toast({ title: "Save failed", description: message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -71,11 +156,13 @@ export default function Onboarding() {
                   {experienceOptions.map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => { setExperience(opt.value); setStep(1); }}
+                      type="button"
+                      onClick={() => {
+                        setExperience(opt.value);
+                        setStep(1);
+                      }}
                       className={`w-full flex items-center gap-4 p-4 rounded-lg border transition-all ${
-                        experience === opt.value
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-secondary hover:border-primary/40"
+                        experience === opt.value ? "border-primary bg-primary/10" : "border-border bg-secondary hover:border-primary/40"
                       }`}
                     >
                       <span className="text-2xl">{opt.emoji}</span>
@@ -97,11 +184,13 @@ export default function Onboarding() {
                   {ageOptions.map((opt) => (
                     <button
                       key={opt.value}
-                      onClick={() => { setAge(opt.value); setStep(2); }}
+                      type="button"
+                      onClick={() => {
+                        setAge(opt.value);
+                        setStep(2);
+                      }}
                       className={`w-full flex items-center gap-4 p-4 rounded-lg border transition-all ${
-                        age === opt.value
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-secondary hover:border-primary/40"
+                        age === opt.value ? "border-primary bg-primary/10" : "border-border bg-secondary hover:border-primary/40"
                       }`}
                     >
                       <p className="font-display font-semibold text-foreground">{opt.label}</p>
@@ -109,7 +198,9 @@ export default function Onboarding() {
                     </button>
                   ))}
                 </div>
-                <button onClick={() => setStep(0)} className="mt-4 text-sm text-muted-foreground hover:text-primary">← Back</button>
+                <button type="button" onClick={() => setStep(0)} className="mt-4 text-sm text-muted-foreground hover:text-primary">
+                  ← Back
+                </button>
               </motion.div>
             )}
 
@@ -133,19 +224,23 @@ export default function Onboarding() {
                       max={range.max}
                       className="bg-secondary border-border text-foreground text-lg font-display"
                     />
-                    {investment && (parseInt(investment) > range.max) && (
+                    {investment && parseInt(investment, 10) > range.max && (
                       <p className="text-xs text-warning">Maximum is ${range.max.toLocaleString()}. We'll cap it for you.</p>
                     )}
                   </div>
                   <Button
+                    type="button"
+                    disabled={saving}
                     onClick={handleFinish}
                     className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-display font-semibold py-5"
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Start Trading
+                    {saving ? "Saving…" : "Start Trading"}
                   </Button>
                 </div>
-                <button onClick={() => setStep(1)} className="mt-4 text-sm text-muted-foreground hover:text-primary">← Back</button>
+                <button type="button" onClick={() => setStep(1)} className="mt-4 text-sm text-muted-foreground hover:text-primary">
+                  ← Back
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
