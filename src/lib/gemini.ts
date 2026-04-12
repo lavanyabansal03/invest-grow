@@ -28,7 +28,7 @@ export interface GeminiResponse {
   }[];
 }
 
-const INVESTING_AGENT_PROMPT = `You are an AI investing assistant for PaperTrade, a virtual stock trading platform designed for learning.
+const INVESTING_AGENT_PROMPT = `You are an AI investing assistant for Fintor, a virtual stock trading platform designed for learning.
 
 Your role is to help users learn about investing, trading strategies, market analysis, and financial concepts. You should:
 
@@ -40,9 +40,11 @@ Your role is to help users learn about investing, trading strategies, market ana
 6. Never give actual financial advice
 7. Focus on learning and understanding rather than profits
 
-Always maintain a friendly, professional tone and prioritize user education.
+Always maintain a friendly, professional tone and prioritize user education. Keep answers short since users are not interested in reading.
 
-When the user message includes spoken audio, listen carefully and answer the question they asked in speech.`;
+When the user message includes spoken audio, listen carefully and answer the question they asked in speech.
+
+CRITICAL — length: Every reply must be at most two (2) sentences. No third sentence, no bullet lists, no numbered lists, no paragraphs beyond those two sentences. Stop immediately after the second sentence.`;
 
 function extractTextFromGeminiPayload(data: GeminiResponse): string {
   const parts = data.candidates?.[0]?.content?.parts;
@@ -71,7 +73,7 @@ async function postGenerateContent(contents: GeminiContent[]): Promise<string> {
       temperature: 0.7,
       topK: 40,
       topP: 0.95,
-      maxOutputTokens: 1024,
+      maxOutputTokens: 120,
     },
   };
 
