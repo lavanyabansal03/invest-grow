@@ -36,11 +36,11 @@ export default function Auth() {
           title: "Account created!",
           description: "Check your email to verify your account, or continue if auto-confirmed.",
         });
-        navigate("/onboarding");
+        navigate("/onboarding", { replace: true });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     } catch (error: any) {
       toast({
@@ -59,7 +59,7 @@ export default function Auth() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
             <TrendingUp className="h-8 w-8 text-primary" />
-            <span className="font-display font-bold text-2xl text-foreground">PaperTrade</span>
+            <span className="font-display font-bold text-2xl text-foreground">Fintor</span>
           </div>
           <h1 className="font-display text-2xl font-bold text-foreground">
             {isSignup ? "Create your account" : "Welcome back"}

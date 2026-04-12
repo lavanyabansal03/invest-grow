@@ -34,7 +34,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-6 w-6 text-primary" />
-            <span className="font-display font-bold text-lg text-foreground">PaperTrade</span>
+            <span className="font-display font-bold text-lg text-foreground">Fintor</span>
           </div>
           <div className="flex items-center gap-3">
             <Link to="/auth">
@@ -62,9 +62,11 @@ export default function Landing() {
               Learn investing without the risk
             </div>
             <h1 className="font-display text-5xl md:text-7xl font-bold tracking-tight mb-6">
-              <span className="text-foreground">Build Your</span>
+              <span className="text-foreground">Fintor</span>
               <br />
-              <span className="text-gradient">Financial Confidence</span>
+              <span className="text-gradient text-4xl md:text-6xl lg:text-7xl leading-tight block mt-1">
+                your financial mentor
+              </span>
             </h1>
             <p className="text-muted-foreground text-lg md:text-xl max-w-2xl mx-auto mb-10 font-body">
               Trade stocks with virtual money, learn from real market data, and grow your investing skills — all in a safe, gamified environment.
@@ -214,7 +216,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            <span className="font-display font-semibold">PaperTrade</span>
+            <span className="font-display font-semibold">Papertrade</span>
           </div>
           <p>Virtual trading platform for learning. Not financial advice.</p>
         </div>
