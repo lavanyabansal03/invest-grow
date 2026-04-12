@@ -1,4 +1,4 @@
-import { LayoutDashboard, BarChart3, Briefcase, Trophy, TrendingUp, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Briefcase, Trophy, TrendingUp, LogOut, Newspaper } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ import {
 const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Market", url: "/market", icon: BarChart3 },
+  { title: "News", url: "/news", icon: Newspaper },
   { title: "Portfolio", url: "/portfolio", icon: Briefcase },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
 ];

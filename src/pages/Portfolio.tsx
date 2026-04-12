@@ -100,7 +100,6 @@ export default function Portfolio() {
         <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
           <div className="h-full bg-warning rounded-full transition-all" style={{ width: `${Math.min(100, confidence)}%` }} />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Based on your experience level at signup (0–100).</p>
       </div>
 
       <div className="glass-card p-5">
