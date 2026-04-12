@@ -3,6 +3,7 @@ import { MessageCircle, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import { sendMessageToGemini, ChatMessage as GeminiMessage } from "@/lib/gemini";
+import { NeutralCoinMascot } from "@/components/NeutralCoinMascot";
 
 interface ChatMessage {
   id: string;
@@ -43,6 +44,8 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     setIsLoading(true);
 
     try {
+      console.log("Sending message to Gemini:", userMessage.content);
+
       // Convert messages to Gemini format
       const geminiMessages: GeminiMessage[] = messages
         .filter(msg => msg.id !== "1") // Skip the initial greeting
@@ -57,7 +60,10 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
         parts: [{ text: userMessage.content }],
       });
 
+      console.log("Gemini messages:", geminiMessages);
+
       const response = await sendMessageToGemini(geminiMessages);
+      console.log("Gemini response:", response);
 
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -110,18 +116,16 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
             className="fixed right-0 top-0 h-full w-full max-w-md bg-background border-l border-border z-50 flex flex-col"
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-border">
+            <div className="flex items-center justify-between px-4 border-b border-border">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                </div>
+                <NeutralCoinMascot className="scale-[0.9] translate-y-4" />
                 <div>
-                  <h3 className="font-display font-semibold text-foreground">AI Assistant</h3>
-                  <p className="text-xs text-muted-foreground">Your investing companion</p>
+                  <h3 className="font-display font-semibold text-foreground text-lg ml-7">AI Assistant</h3>
+                  <p className="text-sm text-muted-foreground ml-4">Your investing companion</p>
                 </div>
               </div>
-              <Button variant="ghost" size="sm" onClick={onClose}>
-                <X className="h-4 w-4" />
+              <Button variant="ghost" size="sm" onClick={onClose} className="-mt-18">
+                <X className="h-2 w-4" />
               </Button>
             </div>
 

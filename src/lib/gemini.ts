@@ -1,9 +1,8 @@
 // Gemini API integration for the chatbot
-// Replace this with your actual Gemini API implementation
+// Using Gemini for AI responses
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent";
-
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 export interface ChatMessage {
   role: "user" | "model";
   parts: { text: string }[];
@@ -33,26 +32,25 @@ Always maintain a friendly, professional tone and prioritize user education.`;
 
 export async function sendMessageToGemini(messages: ChatMessage[]): Promise<string> {
   try {
+    console.log("API Key present:", !!GEMINI_API_KEY);
+    console.log("API Key starts with:", GEMINI_API_KEY?.substring(0, 10));
+
     if (!GEMINI_API_KEY) {
       throw new Error("Gemini API key not configured");
     }
 
-    const requestBody = {
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: INVESTING_AGENT_PROMPT }]
-        },
-        ...messages
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 1024,
-      },
-    };
-
+   const requestBody = {
+  systemInstruction: {
+    parts: [{ text: INVESTING_AGENT_PROMPT }]
+  },
+  contents: messages,  // just pass messages directly, no prompt prepended
+  generationConfig: {
+    temperature: 0.7,
+    topK: 40,
+    topP: 0.95,
+    maxOutputTokens: 1024,
+  },
+};
     const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
       method: "POST",
       headers: {
@@ -61,8 +59,13 @@ export async function sendMessageToGemini(messages: ChatMessage[]): Promise<stri
       body: JSON.stringify(requestBody),
     });
 
+    console.log("API Response status:", response.status);
+    console.log("API Response headers:", Object.fromEntries(response.headers.entries()));
+
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error("API Error response:", errorText);
+      throw new Error(`API request failed: ${response.status} - ${errorText}`);
     }
 
     const data: GeminiResponse = await response.json();
@@ -77,3 +80,4 @@ export async function sendMessageToGemini(messages: ChatMessage[]): Promise<stri
     return "Sorry, I'm having trouble connecting right now. Please try again later.";
   }
 }
+

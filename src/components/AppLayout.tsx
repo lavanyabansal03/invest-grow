@@ -3,8 +3,7 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Chatbot } from "@/components/Chatbot";
-import { Button } from "@/components/ui/button";
-import { MessageCircle } from "lucide-react";
+import { NeutralCoinMascot } from "@/components/NeutralCoinMascot";
 import { useSidebar } from "@/components/ui/sidebar";
 
 function AppLayoutContent() {
@@ -28,15 +27,13 @@ function AppLayoutContent() {
           <div className="flex items-center gap-2">
             <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
+          <div
             onClick={handleMascotClick}
-            className="text-muted-foreground hover:text-foreground hover:bg-primary/10"
+            className="cursor-pointer p-1 rounded-md hover:bg-primary/10 transition-colors"
+            title="AI Assistant"
           >
-            <MessageCircle className="h-5 w-5" />
-            <span className="ml-2 hidden sm:inline">AI Assistant</span>
-          </Button>
+            <NeutralCoinMascot className="scale-[0.9] origin-top-right -mb-28 -ml-38" />
+          </div>
         </header>
         <main className="flex-1 overflow-y-auto">
           <Outlet />
