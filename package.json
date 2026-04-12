@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:all": "concurrently \"npm run dev\" \"cd server && python3 main.py\"",
+    "server": "cd server && python3 main.py",
+    "dev:all": "concurrently \"npm run dev\" \"npm run server\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
