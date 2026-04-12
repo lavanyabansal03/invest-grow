@@ -1,13 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
+import type { User } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type ProfileRow = Tables<"profiles">;
+
+/** Signup handle from `signUp({ options: { data: { username } } })` — preferred over `profiles.username` when the row is wrong or stale. */
+function usernameFromAuthMetadata(user: User): string {
+  const raw = (user.user_metadata as Record<string, unknown> | undefined)?.username;
+  return typeof raw === "string" ? raw.trim() : "";
+}
 export type HoldingRow = Tables<"holdings">;
 export type TransactionRow = Tables<"transactions">;
 export type SoldStockRow = Tables<"sold_stocks">;
 export type WatchlistRow = Tables<"watchlist">;
 
+/** Single row from `public.profiles` where `user_id` equals the signed-in user (`auth.users.id`). */
 export function useUserProfile() {
   return useQuery({
     queryKey: ["profile"],
@@ -17,9 +25,18 @@ export function useUserProfile() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle();
+      const userId = user.id;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
       if (error) throw error;
-      return data;
+      if (!data) return null;
+      const fromAuth = usernameFromAuthMetadata(user);
+      const fromDb = String(data.username ?? "").trim();
+      const username = fromAuth || fromDb;
+      return { ...data, username };
     },
   });
 }

@@ -209,8 +209,8 @@ export default function Onboarding() {
                 <h2 className="font-display text-lg font-semibold text-foreground mb-2">Choose your starting investment</h2>
                 <p className="text-sm text-muted-foreground mb-6">
                   {range.min === range.max
-                    ? `Your starting amount is $${range.min.toLocaleString()} (virtual money).`
-                    : `You can start with $${range.min.toLocaleString()} – $${range.max.toLocaleString()} (virtual money).`}
+                    ? `Your starting amount is $${range.min.toLocaleString()}  Finto Coins.`
+                    : `You can start with $${range.min.toLocaleString()} – $${range.max.toLocaleString()} Finto Coins.`}
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
