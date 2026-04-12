@@ -1,25 +1,72 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Search, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
-import { getStockQuote } from "@/api/finnhub";
+import { getStockQuote, searchStocks, type FinnhubSearchItem } from "@/api/finnhub";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useUserProfile } from "@/hooks/usePaperPortfolio";
 import { num } from "@/lib/money";
 
-const allStocks = [
-  { symbol: "AAPL", name: "Apple Inc.", price: 189.84, change: 1.25 },
-  { symbol: "MSFT", name: "Microsoft Corp.", price: 378.91, change: -0.3 },
-  { symbol: "GOOGL", name: "Alphabet Inc.", price: 141.8, change: 0.62 },
-  { symbol: "AMZN", name: "Amazon.com", price: 186.13, change: 1.75 },
-  { symbol: "NVDA", name: "NVIDIA Corp.", price: 875.38, change: 1.44 },
-  { symbol: "TSLA", name: "Tesla Inc.", price: 248.42, change: -2.1 },
-  { symbol: "META", name: "Meta Platforms", price: 505.15, change: 0.88 },
-  { symbol: "JPM", name: "JPMorgan Chase", price: 198.47, change: 0.33 },
+const CURATED: { symbol: string; name: string }[] = [
+  { symbol: "AAPL", name: "Apple Inc." },
+  { symbol: "MSFT", name: "Microsoft Corp." },
+  { symbol: "GOOGL", name: "Alphabet Inc." },
+  { symbol: "AMZN", name: "Amazon.com" },
+  { symbol: "NVDA", name: "NVIDIA Corp." },
+  { symbol: "TSLA", name: "Tesla Inc." },
+  { symbol: "META", name: "Meta Platforms" },
+  { symbol: "JPM", name: "JPMorgan Chase" },
 ];
+
+export type StockRow = {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+};
+
+const TRADABLE_TYPES = new Set([
+  "Common Stock",
+  "ADR",
+  "American Depositary Receipt",
+  "Depositary Receipt",
+  "ETF",
+  "ETP",
+  "REIT",
+]);
+
+function isTradableHit(row: FinnhubSearchItem): boolean {
+  const sym = (row.displaySymbol || row.symbol || "").trim().toUpperCase();
+  if (!sym || sym.includes(":")) return false;
+  const t = (row.type || "").trim();
+  if (TRADABLE_TYPES.has(t)) return true;
+  if (t.toLowerCase().includes("stock")) return true;
+  return false;
+}
+
+/** Use Finnhub `symbol` for quotes when it is a plain ticker; otherwise `displaySymbol`. */
+function quoteSymbol(row: FinnhubSearchItem): string {
+  const sym = (row.symbol || "").trim();
+  if (sym && !sym.includes(":")) return sym.toUpperCase();
+  return (row.displaySymbol || "").trim().toUpperCase();
+}
+
+async function hydrateQuotes(rows: { symbol: string; name: string }[]): Promise<StockRow[]> {
+  const out = await Promise.all(
+    rows.map(async (r) => {
+      try {
+        const q = await getStockQuote(r.symbol);
+        return { symbol: r.symbol, name: r.name, price: q.c, change: q.dp };
+      } catch {
+        return { symbol: r.symbol, name: r.name, price: 0, change: 0 };
+      }
+    }),
+  );
+  return out.filter((r) => r.price > 0);
+}
 
 export default function Market() {
   const queryClient = useQueryClient();
@@ -27,39 +74,97 @@ export default function Market() {
   const { data: profile } = useUserProfile();
 
   const [query, setQuery] = useState("");
-  const [selectedStock, setSelectedStock] = useState<(typeof allStocks)[0] | null>(null);
+  const [selectedStock, setSelectedStock] = useState<StockRow | null>(null);
   const [buyMode, setBuyMode] = useState<"shares" | "dollars">("shares");
   const [buyAmount, setBuyAmount] = useState("");
-  const [stocksList, setStocksList] = useState(allStocks);
+  const [curatedList, setCuratedList] = useState<StockRow[]>([]);
+  const [searchResults, setSearchResults] = useState<StockRow[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [buyLoading, setBuyLoading] = useState(false);
 
   useEffect(() => {
-    async function loadRealPrices() {
-      const updated = await Promise.all(
-        allStocks.map(async (stock) => {
-          try {
-            const data = await getStockQuote(stock.symbol);
-            return {
-              ...stock,
-              price: data.c,
-              change: data.dp,
-            };
-          } catch (e) {
-            console.error(`Failed to fetch ${stock.symbol}`, e);
-            return stock;
-          }
-        }),
-      );
-      setStocksList(updated);
-
-      setSelectedStock((prev) => {
-        if (!prev) return prev;
-        return updated.find((s) => s.symbol === prev.symbol) || prev;
-      });
-    }
-
-    loadRealPrices();
+    let cancelled = false;
+    (async () => {
+      const rows = await hydrateQuotes(CURATED);
+      if (!cancelled) setCuratedList(rows);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const runSearch = useCallback(
+    async (q: string) => {
+      const trimmed = q.trim();
+      if (!trimmed) return;
+      try {
+        const hits = await searchStocks(trimmed);
+        const picked = hits
+          .filter(isTradableHit)
+          .map((h) => ({
+            symbol: quoteSymbol(h),
+            name: (h.description || h.displaySymbol || h.symbol || "").trim() || h.symbol,
+          }))
+          .filter((r, i, arr) => arr.findIndex((x) => x.symbol === r.symbol) === i)
+          .slice(0, 15);
+
+        if (picked.length === 0) {
+          setSearchResults([]);
+          return;
+        }
+
+        const withQuotes = await hydrateQuotes(picked);
+        setSearchResults(withQuotes);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Search failed.";
+        toast({ title: "Search failed", description: message, variant: "destructive" });
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    },
+    [toast],
+  );
+
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    const t = window.setTimeout(() => {
+      void runSearch(query.trim());
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [query, runSearch]);
+
+  const displayStocks = useMemo(() => {
+    if (!query.trim()) return curatedList;
+    return searchResults ?? [];
+  }, [query, curatedList, searchResults]);
+
+  useEffect(() => {
+    if (!selectedStock?.symbol) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const q = await getStockQuote(selectedStock.symbol);
+        if (cancelled) return;
+        setSelectedStock((prev) =>
+          prev && prev.symbol === selectedStock.symbol
+            ? { ...prev, price: q.c, change: q.dp }
+            : prev,
+        );
+      } catch {
+        /* keep last price */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStock?.symbol]);
 
   const cash = profile ? num(profile.cash_balance) : 0;
 
@@ -113,18 +218,14 @@ export default function Market() {
     }
   };
 
-  const filtered = query
-    ? stocksList.filter(
-        (s) =>
-          s.symbol.toLowerCase().includes(query.toLowerCase()) || s.name.toLowerCase().includes(query.toLowerCase()),
-      )
-    : stocksList;
+  const showEmptySearch =
+    query.trim().length > 0 && !searchLoading && searchResults !== null && displayStocks.length === 0;
 
   return (
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Market</h1>
-        <p className="text-sm text-muted-foreground">Search and trade stocks</p>
+        <p className="text-sm text-muted-foreground">Search symbols or company names (Finnhub), then buy paper shares</p>
       </div>
 
       <div className="relative">
@@ -132,44 +233,59 @@ export default function Market() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search stocks (e.g. AAPL, Tesla)..."
+          placeholder="Search e.g. Disney, NVDA, Coca-Cola…"
           className="pl-10 bg-secondary border-border text-foreground"
         />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-2">
-          {filtered.map((stock) => (
-            <motion.button
-              key={stock.symbol}
-              type="button"
-              whileHover={{ scale: 1.01 }}
-              onClick={() => setSelectedStock(stock)}
-              className={`w-full glass-card p-4 flex items-center justify-between transition-all ${
-                selectedStock?.symbol === stock.symbol ? "border-primary/50" : ""
-              }`}
-            >
-              <div className="text-left">
-                <p className="font-display font-semibold text-foreground">{stock.symbol}</p>
-                <p className="text-xs text-muted-foreground">{stock.name}</p>
-              </div>
-              <div className="text-right">
-                <p className="font-display font-semibold text-foreground">${stock.price.toFixed(2)}</p>
-                <div className={`flex items-center gap-1 text-xs ${stock.change >= 0 ? "text-primary" : "text-destructive"}`}>
-                  {stock.change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {stock.change >= 0 ? "+" : ""}
-                  {stock.change.toFixed(2)}%
+          {searchLoading && (
+            <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="text-sm">Searching…</span>
+            </div>
+          )}
+          {!searchLoading &&
+            displayStocks.map((stock) => (
+              <motion.button
+                key={stock.symbol}
+                type="button"
+                whileHover={{ scale: 1.01 }}
+                onClick={() => setSelectedStock(stock)}
+                className={`w-full glass-card p-4 flex items-center justify-between transition-all ${
+                  selectedStock?.symbol === stock.symbol ? "border-primary/50" : ""
+                }`}
+              >
+                <div className="text-left min-w-0 pr-3">
+                  <p className="font-display font-semibold text-foreground">{stock.symbol}</p>
+                  <p className="text-xs text-muted-foreground truncate">{stock.name}</p>
                 </div>
-              </div>
-            </motion.button>
-          ))}
-          {filtered.length === 0 && <p className="text-center text-muted-foreground py-8">No stocks found</p>}
+                <div className="text-right shrink-0">
+                  <p className="font-display font-semibold text-foreground">${stock.price.toFixed(2)}</p>
+                  <div className={`flex items-center justify-end gap-1 text-xs ${stock.change >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {stock.change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {stock.change >= 0 ? "+" : ""}
+                    {stock.change.toFixed(2)}%
+                  </div>
+                </div>
+              </motion.button>
+            ))}
+          {!searchLoading && !query.trim() && curatedList.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">Loading prices…</p>
+          )}
+          {showEmptySearch && (
+            <p className="text-center text-muted-foreground py-8">No tradable matches. Try a ticker (e.g. DIS) or another name.</p>
+          )}
         </div>
 
         <div className="glass-card p-5 h-fit sticky top-6">
           {profile && (
             <p className="text-xs text-muted-foreground mb-3">
-              Cash balance: <span className="font-display font-semibold text-foreground">${cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              Cash balance:{" "}
+              <span className="font-display font-semibold text-foreground">
+                ${cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
             </p>
           )}
           {selectedStock ? (
