@@ -54,7 +54,7 @@ export function AppSidebar() {
         {/* Logo */}
         <div className={`flex items-center gap-2 px-4 py-5 ${collapsed ? "justify-center" : ""}`}>
           <TrendingUp className="h-6 w-6 text-primary shrink-0" />
-          {!collapsed && <span className="font-display font-bold text-lg text-foreground">PaperTrade</span>}
+          {!collapsed && <span className="font-display font-bold text-lg text-foreground">Fintor</span>}
         </div>
 
         <SidebarGroup>
