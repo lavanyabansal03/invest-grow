@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,7 +10,6 @@ import AppLayout from "./components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import Market from "./pages/Market";
 import Portfolio from "./pages/Portfolio";
-import Watchlist from "./pages/Watchlist";
 import Leaderboard from "./pages/Leaderboard";
 import NotFound from "./pages/NotFound";
 
@@ -35,7 +34,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/market" element={<Market />} />
             <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/watchlist" element={<Watchlist />} />
+            <Route path="/watchlist" element={<Navigate to="/market" replace />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
           </Route>
           <Route path="*" element={<NotFound />} />
