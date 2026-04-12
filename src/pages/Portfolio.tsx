@@ -151,9 +151,17 @@ export default function Portfolio() {
       });
       if (error) throw error;
       const proceeds = shares * sellPrice;
+      const avg = sellRow.avgPrice;
+      const pctVsAvg = avg > 0 ? ((sellPrice - avg) / avg) * 100 : null;
+      const pctLine =
+        pctVsAvg != null
+          ? pctVsAvg >= 0
+            ? ` Profit on this trade: +${pctVsAvg.toFixed(2)}% (vs your avg cost).`
+            : ` Loss on this trade: ${Math.abs(pctVsAvg).toFixed(2)}% (vs your avg cost).`
+          : "";
       toast({
         title: `Sold ${sellRow.symbol}`,
-        description: `${shares.toFixed(4)} shares for ~$${proceeds.toFixed(2)}.`,
+        description: `${shares.toFixed(4)} shares for ~$${proceeds.toFixed(2)}.${pctLine}`,
       });
       await queryClient.invalidateQueries({ queryKey: ["profile"] });
       await queryClient.invalidateQueries({ queryKey: ["holdings"] });
