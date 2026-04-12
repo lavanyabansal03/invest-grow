@@ -7,7 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getStockQuote, searchStocks, type FinnhubSearchItem } from "@/api/finnhub";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useUserProfile, useWatchlist } from "@/hooks/usePaperPortfolio";
+import { useUserProfile, useWatchlist, type WatchlistRow } from "@/hooks/usePaperPortfolio";
 import { num } from "@/lib/money";
 
 const MAX_WATCHLIST = 5;
@@ -31,6 +31,9 @@ export type StockRow = {
 };
 
 type WatchDisplayRow = { id: string; symbol: string; name: string; price: number; change: number };
+
+/** Stable empty list so `data ?? EMPTY` does not create a new `[]` every render (avoids useEffect loops). */
+const EMPTY_WATCHLIST: WatchlistRow[] = [];
 
 const TRADABLE_TYPES = new Set([
   "Common Stock",
@@ -75,7 +78,8 @@ export default function Market() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { data: profile } = useUserProfile();
-  const { data: watchlistRows = [], isLoading: watchlistLoading } = useWatchlist();
+  const { data: watchlistData, isLoading: watchlistLoading } = useWatchlist();
+  const watchlistRows = watchlistData ?? EMPTY_WATCHLIST;
 
   const [query, setQuery] = useState("");
   const [selectedStock, setSelectedStock] = useState<StockRow | null>(null);
