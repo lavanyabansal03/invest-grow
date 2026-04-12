@@ -28,7 +28,7 @@ export interface GeminiResponse {
   }[];
 }
 
-const INVESTING_AGENT_PROMPT = `You are an AI investing assistant for PaperTrade, a virtual stock trading platform designed for learning.
+const INVESTING_AGENT_PROMPT = `You are an AI investing assistant for Fintor, a virtual stock trading platform designed for learning.
 
 Your role is to help users learn about investing, trading strategies, market analysis, and financial concepts. You should:
 
