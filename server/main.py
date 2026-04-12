@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -11,14 +11,12 @@ dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 load_dotenv(dotenv_path)
 
 app = Flask(__name__)
-# Explicit CORS for browser hits to Flask (e.g. direct :5000 from any localhost dev port)
 CORS(
     app,
     resources={r"/api/*": {"origins": "*", "methods": ["GET", "HEAD", "OPTIONS"]}},
     supports_credentials=False,
 )
 
-# Initialize Flask-Limiter for 50 requests per minute
 limiter = Limiter(
     get_remote_address,
     app=app,
@@ -29,8 +27,27 @@ limiter = Limiter(
 FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
 API_KEY = os.getenv('FINNHUB_API_KEY')
 
+# macOS Monterey+ often binds AirPlay to :5000; it answers HTTP with 403 — not Flask.
+BACKEND_DEFAULT_PORT = 5050
+
+
+def _listen_port() -> int:
+    raw = os.getenv("FLASK_PORT")
+    if raw is None or str(raw).strip() == "":
+        return BACKEND_DEFAULT_PORT
+    try:
+        p = int(raw)
+    except ValueError:
+        return BACKEND_DEFAULT_PORT
+    if p == 5000:
+        print("WARNING: Port 5000 is used by macOS AirPlay Receiver (HTTP 403). Using 5050. Set FLASK_PORT=5050 in .env.")
+        return BACKEND_DEFAULT_PORT
+    return p
+
+
 if not API_KEY:
     print("WARNING: FINNHUB_API_KEY is not set in the .env file.")
+
 
 @app.route('/api/stocks/quote/<symbol>', methods=['GET'])
 def get_quote(symbol):
@@ -43,6 +60,7 @@ def get_quote(symbol):
     except requests.RequestException as e:
         return jsonify({"error": "Failed to fetch stock quote", "details": str(e)}), 500
 
+
 @app.route('/api/stocks/profile/<symbol>', methods=['GET'])
 def get_profile(symbol):
     if not API_KEY:
@@ -54,9 +72,8 @@ def get_profile(symbol):
     except requests.RequestException as e:
         return jsonify({"error": "Failed to fetch company profile", "details": str(e)}), 500
 
+
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    print(f"Backend Server running on port {port}")
-    print("Rate limits: max 50 requests per minute.")
-    # Run the app
-    app.run(port=port, debug=True)
+    port = _listen_port()
+    print(f"Backend: http://127.0.0.1:{port}  (rate limit 50 req/min to this server)")
+    app.run(host="127.0.0.1", port=port, debug=True)

@@ -2,12 +2,15 @@
  * API base: empty = same-origin `/api/...` (Vite proxies to Flask in dev).
  * Set `VITE_API_URL` to your deployed backend origin only (no `/api` suffix), e.g. `https://api.myapp.com`
  */
+
+const LOCAL_FLASK_PORTS = new Set(["5000", "5050"]);
+
 function isLocalFlaskOrigin(base: string): boolean {
   try {
     const u = new URL(base);
     const host = u.hostname.toLowerCase();
     const port = u.port || (u.protocol === "https:" ? "443" : "80");
-    return (host === "localhost" || host === "127.0.0.1" || host === "[::1]") && port === "5000";
+    return (host === "localhost" || host === "127.0.0.1" || host === "[::1]") && LOCAL_FLASK_PORTS.has(port);
   } catch {
     return false;
   }
@@ -19,8 +22,6 @@ function resolveApiOrigin(): string {
   let base = String(raw).trim().replace(/\/$/, "");
   if (base.endsWith("/api")) base = base.slice(0, -4);
 
-  // `.env` often sets VITE_API_URL=http://localhost:5000 — that bypasses the Vite proxy and
-  // triggers CORS (8081 → :5000). In dev, always use same-origin + proxy for local Flask.
   if (import.meta.env.DEV && isLocalFlaskOrigin(base)) {
     return "";
   }
@@ -35,13 +36,13 @@ function stocksUrl(path: string): string {
 }
 
 export interface FinnhubQuote {
-  c: number; // Current price
-  d: number; // Change
-  dp: number; // Percent change
-  h: number; // High price of the day
-  l: number; // Low price of the day
-  o: number; // Open price of the day
-  pc: number; // Previous close price
+  c: number;
+  d: number;
+  dp: number;
+  h: number;
+  l: number;
+  o: number;
+  pc: number;
 }
 
 export interface FinnhubProfile {
@@ -75,9 +76,6 @@ async function readErrorMessage(response: Response): Promise<string> {
   return response.statusText || "Request failed";
 }
 
-/**
- * Fetches the real-time quote for a given stock symbol through our rate-limited backend.
- */
 export async function getStockQuote(symbol: string): Promise<FinnhubQuote> {
   const sym = encodeURIComponent(symbol.trim().toUpperCase());
   const response = await fetch(stocksUrl(`/quote/${sym}`));
@@ -91,9 +89,6 @@ export async function getStockQuote(symbol: string): Promise<FinnhubQuote> {
   return response.json() as Promise<FinnhubQuote>;
 }
 
-/**
- * Fetches the company profile for a given stock symbol through our rate-limited backend.
- */
 export async function getCompanyProfile(symbol: string): Promise<FinnhubProfile> {
   const sym = encodeURIComponent(symbol.trim().toUpperCase());
   const response = await fetch(stocksUrl(`/profile/${sym}`));
