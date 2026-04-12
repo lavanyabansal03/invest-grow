@@ -354,7 +354,7 @@ export default function Market() {
   const selectedOnWatchlist = selectedStock ? watchSymbols.has(selectedStock.symbol.toUpperCase()) : false;
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Market</h1>
         <p className="text-sm text-muted-foreground">
