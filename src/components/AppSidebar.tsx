@@ -1,6 +1,6 @@
-import { LayoutDashboard, BarChart3, Briefcase, Star, Trophy, TrendingUp, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Briefcase, Trophy, TrendingUp, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -19,14 +19,12 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Market", url: "/market", icon: BarChart3 },
   { title: "Portfolio", url: "/portfolio", icon: Briefcase },
-  { title: "Watchlist", url: "/watchlist", icon: Star },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const location = useLocation();
   const navigate = useNavigate();
   const { toast } = useToast();
 
