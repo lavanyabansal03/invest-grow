@@ -51,7 +51,7 @@ export default function Dashboard() {
   const cashBalance = profile ? num(profile.cash_balance) : 0;
   const startingCash = profile ? Math.max(num(profile.starting_cash), 1) : 1;
   const confidence = profile?.confidence_score ?? 0;
-  /** `profiles.username` for the row whose `user_id` matches the current user (loaded via `useUserProfile`). */
+  /** Signup username from Auth metadata when present, else `profiles.username` (see `useUserProfile`). */
   const rawUsername =
     profile?.user_id != null && profile.username != null ? String(profile.username).trim() : "";
   const username = rawUsername.length > 0 ? rawUsername : "Trader";
