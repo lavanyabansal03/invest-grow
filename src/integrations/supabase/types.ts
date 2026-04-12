@@ -117,6 +117,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      sold_stocks: {
+        Row: {
+          id: string;
+          user_id: string;
+          stock_symbol: string;
+          company_name: string | null;
+          shares_sold: string | number;
+          sale_price_per_share: string | number;
+          proceeds: string | number;
+          avg_cost_per_share_at_sale: string | number;
+          cost_basis: string | number;
+          realized_pnl: string | number;
+          recorded_at: string;
+          transaction_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          stock_symbol: string;
+          company_name?: string | null;
+          shares_sold: string | number;
+          sale_price_per_share: string | number;
+          proceeds: string | number;
+          avg_cost_per_share_at_sale: string | number;
+          cost_basis: string | number;
+          realized_pnl: string | number;
+          recorded_at?: string;
+          transaction_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          stock_symbol?: string;
+          company_name?: string | null;
+          shares_sold?: string | number;
+          sale_price_per_share?: string | number;
+          proceeds?: string | number;
+          avg_cost_per_share_at_sale?: string | number;
+          cost_basis?: string | number;
+          realized_pnl?: string | number;
+          recorded_at?: string;
+          transaction_id?: string | null;
+        };
+        Relationships: [];
+      };
       watchlist: {
         Row: {
           id: string;
@@ -150,6 +195,14 @@ export type Database = {
         Args: {
           p_symbol: string;
           p_company_name: string;
+          p_shares: number;
+          p_price: number;
+        };
+        Returns: Json;
+      };
+      execute_paper_sell: {
+        Args: {
+          p_symbol: string;
           p_shares: number;
           p_price: number;
         };
