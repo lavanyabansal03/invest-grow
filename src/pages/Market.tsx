@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { Search, TrendingUp, TrendingDown, Loader2, Star, X } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, Loader2, Star, X, AlertCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { getStockQuote, searchStocks, type FinnhubSearchItem } from "@/api/finnhub";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useWatchlist, type WatchlistRow } from "@/hooks/usePaperPortfolio";
 
@@ -217,6 +218,15 @@ export default function Market() {
   }, [displayStocksBase, watchSymbols, watchOrderRank]);
 
   const addToWatchlist = async (stock: StockRow) => {
+    if (!isSupabaseConfigured) {
+      toast({
+        title: "Supabase not configured",
+        description:
+          "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY) in .env, then restart npm run dev. Keys must use the VITE_ prefix.",
+        variant: "destructive",
+      });
+      return;
+    }
     const sym = stock.symbol.toUpperCase();
     if (watchSymbols.has(sym)) {
       toast({ title: "Already tracking", description: `${sym} is on your watchlist.`, variant: "destructive" });
@@ -258,6 +268,14 @@ export default function Market() {
   };
 
   const removeFromWatchlist = async (id: string) => {
+    if (!isSupabaseConfigured) {
+      toast({
+        title: "Supabase not configured",
+        description: "Add VITE_SUPABASE_URL and a publishable/anon key in .env, then restart the dev server.",
+        variant: "destructive",
+      });
+      return;
+    }
     setWatchBusy(true);
     try {
       const { error } = await supabase.from("watchlist").delete().eq("id", id);
@@ -282,6 +300,20 @@ export default function Market() {
           Click a row to open the stock detail page (quote, trade, Google Finance chart). Star a row to track it (max {MAX_WATCHLIST}).
         </p>
       </div>
+
+      {!isSupabaseConfigured && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle className="font-display">Supabase is not connected</AlertTitle>
+          <AlertDescription>
+            Watchlist and paper trading need API credentials. In the project root <code className="rounded bg-muted px-1">.env</code>, set{" "}
+            <code className="rounded bg-muted px-1">VITE_SUPABASE_URL</code> and either{" "}
+            <code className="rounded bg-muted px-1">VITE_SUPABASE_PUBLISHABLE_KEY</code> or{" "}
+            <code className="rounded bg-muted px-1">VITE_SUPABASE_ANON_KEY</code> (from Supabase → Settings → API). Restart{" "}
+            <code className="rounded bg-muted px-1">npm run dev</code> after saving.
+          </AlertDescription>
+        </Alert>
+      )}
 
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

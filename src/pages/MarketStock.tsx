@@ -6,7 +6,8 @@ import { getCompanyProfile, getStockQuote } from "@/api/finnhub";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
+import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
+import { explainSupabaseRequestError } from "@/lib/supabase-errors";
 import { useToast } from "@/hooks/use-toast";
 import { useUserProfile, useWatchlist, useHoldings, type WatchlistRow } from "@/hooks/usePaperPortfolio";
 import { googleFinanceQuoteUrl } from "@/lib/googleFinanceUrl";
@@ -83,6 +84,15 @@ export default function MarketStock() {
 
   const addToWatchlist = async () => {
     if (!stock) return;
+    if (!isSupabaseConfigured) {
+      toast({
+        title: "Supabase not configured",
+        description:
+          "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY) in .env, then restart npm run dev.",
+        variant: "destructive",
+      });
+      return;
+    }
     const sym = stock.symbol.toUpperCase();
     if (watchSymbols.has(sym)) {
       toast({ title: "Already tracking", description: `${sym} is on your watchlist.`, variant: "destructive" });
@@ -123,6 +133,15 @@ export default function MarketStock() {
 
   const handleBuy = async () => {
     if (!stock) return;
+    if (!isSupabaseConfigured) {
+      toast({
+        title: "Supabase not configured",
+        description:
+          "Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (or VITE_SUPABASE_ANON_KEY) in .env, then restart npm run dev.",
+        variant: "destructive",
+      });
+      return;
+    }
     const shares = computeShares();
     if (shares == null || shares <= 0) {
       toast({ title: "Invalid amount", description: "Enter a valid number of shares or dollars.", variant: "destructive" });
@@ -148,8 +167,11 @@ export default function MarketStock() {
       await queryClient.invalidateQueries({ queryKey: ["holdings"] });
       await queryClient.invalidateQueries({ queryKey: ["transactions"] });
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Buy failed.";
-      toast({ title: "Order failed", description: message, variant: "destructive" });
+      toast({
+        title: "Order failed",
+        description: explainSupabaseRequestError(e, { rpc: "execute_paper_buy" }),
+        variant: "destructive",
+      });
     } finally {
       setBuyLoading(false);
     }
