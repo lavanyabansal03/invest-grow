@@ -171,12 +171,12 @@ export default function Landing() {
                 <li>
                   <span className="font-medium text-foreground">Email:</span>
                   <br />
-                  <a href="mailto:hello@papertrade.com" className="hover:text-foreground transition-colors">hello@papertrade.com</a>
+                  <a href="mailto:hello@r.com" className="hover:text-foreground transition-colors">hello@fintor.com</a>
                 </li>
                 <li>
                   <span className="font-medium text-foreground">Support:</span>
                   <br />
-                  <a href="mailto:support@papertrade.com" className="hover:text-foreground transition-colors">support@papertrade.com</a>
+                  <a href="mailto:support@fintor.com" className="hover:text-foreground transition-colors">support@fintor.com</a>
                 </li>
                 <li>
                   <span className="font-medium text-foreground">Phone:</span>
@@ -191,7 +191,7 @@ export default function Landing() {
               <h3 className="font-display font-semibold text-foreground mb-6">About</h3>
               <ul className="space-y-3 text-sm text-muted-foreground">
                 <li>
-                  <a href="#" className="hover:text-foreground transition-colors">About PaperTrade</a>
+                  <a href="#" className="hover:text-foreground transition-colors">About Fintor</a>
                 </li>
                 <li>
                   <a href="#" className="hover:text-foreground transition-colors">Our Mission</a>
@@ -216,7 +216,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            <span className="font-display font-semibold">Papertrade</span>
+            <span className="font-display font-semibold">Fintor</span>
           </div>
           <p>Virtual trading platform for learning. Not financial advice.</p>
         </div>
