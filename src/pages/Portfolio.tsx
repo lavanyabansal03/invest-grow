@@ -73,7 +73,7 @@ export default function Portfolio() {
   const totalValue = cashBalance + portfolioValue;
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <h1 className="font-display text-2xl font-bold text-foreground">Portfolio</h1>
 
       <div className="grid sm:grid-cols-3 gap-4">
@@ -100,7 +100,6 @@ export default function Portfolio() {
         <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
           <div className="h-full bg-warning rounded-full transition-all" style={{ width: `${Math.min(100, confidence)}%` }} />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Based on your experience level at signup (0–100).</p>
       </div>
 
       <div className="glass-card p-5">
