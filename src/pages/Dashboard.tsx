@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { TrendingUp, TrendingDown, Flame, Target, DollarSign, BarChart3 } from "lucide-react";
 import { getStockQuote } from "@/api/finnhub";
 import { motion } from "framer-motion";
@@ -37,12 +37,16 @@ type HoldingView = {
   currentPrice: number;
 };
 
+const HOLDINGS_QUOTE_REFRESH_MS = 2 * 60 * 1000;
+
 export default function Dashboard() {
   const { data: profile } = useUserProfile();
   const { data: holdings = [] } = useHoldings();
 
   const [realTopStocks, setRealTopStocks] = useState(topStocks);
   const [realHoldings, setRealHoldings] = useState<HoldingView[]>([]);
+  const holdingsRef = useRef(holdings);
+  holdingsRef.current = holdings;
 
   const cashBalance = profile ? num(profile.cash_balance) : 0;
   const startingCash = profile ? Math.max(num(profile.starting_cash), 1) : 1;
@@ -72,13 +76,16 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadHoldings() {
-      if (!holdings.length) {
-        setRealHoldings([]);
+      const list = holdingsRef.current;
+      if (!list.length) {
+        if (!cancelled) setRealHoldings([]);
         return;
       }
       const rows = await Promise.all(
-        holdings.map(async (h) => {
+        list.map(async (h) => {
           const shares = num(h.shares);
           const avgPrice = num(h.avg_buy_price);
           let currentPrice = avgPrice;
@@ -91,10 +98,16 @@ export default function Dashboard() {
           return { symbol: h.stock_symbol, shares, avgPrice, currentPrice };
         }),
       );
-      setRealHoldings(rows);
+      if (!cancelled) setRealHoldings(rows);
     }
-    loadHoldings();
-  }, [holdingKey, holdings]);
+
+    void loadHoldings();
+    const intervalId = window.setInterval(() => void loadHoldings(), HOLDINGS_QUOTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [holdingKey]);
 
   const portfolioValue = realHoldings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
   const totalValue = cashBalance + portfolioValue;

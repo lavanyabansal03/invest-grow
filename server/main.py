@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -47,6 +47,27 @@ def _listen_port() -> int:
 
 if not API_KEY:
     print("WARNING: FINNHUB_API_KEY is not set in the .env file.")
+
+
+@app.route('/api/stocks/search', methods=['GET'])
+def search_stocks():
+    if not API_KEY:
+        return jsonify({"error": "FINNHUB_API_KEY is not configured on the server", "result": []}), 503
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 1:
+        return jsonify({"count": 0, "result": []})
+    if len(q) > 64:
+        q = q[:64]
+    try:
+        response = requests.get(
+            f"{FINNHUB_BASE_URL}/search",
+            params={"q": q, "token": API_KEY},
+            timeout=15,
+        )
+        response.raise_for_status()
+        return jsonify(response.json())
+    except requests.RequestException as e:
+        return jsonify({"error": "Failed to search symbols", "details": str(e), "result": []}), 500
 
 
 @app.route('/api/stocks/quote/<symbol>', methods=['GET'])

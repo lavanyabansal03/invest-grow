@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { getStockQuote } from "@/api/finnhub";
 import { TrendingUp, TrendingDown, Target } from "lucide-react";
 import { useUserProfile, useHoldings, useTransactions } from "@/hooks/usePaperPortfolio";
 import { num } from "@/lib/money";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 type HoldingView = {
   symbol: string;
@@ -13,12 +14,17 @@ type HoldingView = {
   currentPrice: number;
 };
 
+/** Finnhub quotes for holdings refresh on this interval (ms). */
+const HOLDINGS_QUOTE_REFRESH_MS = 2 * 60 * 1000;
+
 export default function Portfolio() {
   const { data: profile } = useUserProfile();
   const { data: holdings = [] } = useHoldings();
   const { data: transactions = [] } = useTransactions(80);
 
   const [realHoldings, setRealHoldings] = useState<HoldingView[]>([]);
+  const holdingsRef = useRef(holdings);
+  holdingsRef.current = holdings;
 
   const cashBalance = profile ? num(profile.cash_balance) : 0;
   const confidence = profile?.confidence_score ?? 0;
@@ -29,13 +35,16 @@ export default function Portfolio() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadHoldings() {
-      if (!holdings.length) {
-        setRealHoldings([]);
+      const list = holdingsRef.current;
+      if (!list.length) {
+        if (!cancelled) setRealHoldings([]);
         return;
       }
       const rows = await Promise.all(
-        holdings.map(async (h) => {
+        list.map(async (h) => {
           const shares = num(h.shares);
           const avgPrice = num(h.avg_buy_price);
           let currentPrice = avgPrice;
@@ -49,10 +58,16 @@ export default function Portfolio() {
           return { symbol: h.stock_symbol, name, shares, avgPrice, currentPrice };
         }),
       );
-      setRealHoldings(rows);
+      if (!cancelled) setRealHoldings(rows);
     }
-    loadHoldings();
-  }, [holdingKey, holdings]);
+
+    void loadHoldings();
+    const intervalId = window.setInterval(() => void loadHoldings(), HOLDINGS_QUOTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [holdingKey]);
 
   const portfolioValue = realHoldings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
   const totalValue = cashBalance + portfolioValue;
@@ -89,31 +104,59 @@ export default function Portfolio() {
       </div>
 
       <div className="glass-card p-5">
-        <h2 className="font-display font-semibold text-foreground mb-4">Holdings</h2>
-        <div className="space-y-3">
-          {realHoldings.map((h) => {
-            const gain = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100;
-            const totalGain = (h.currentPrice - h.avgPrice) * h.shares;
-            return (
-              <div key={h.symbol} className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
-                <div>
-                  <p className="font-display font-semibold text-foreground">{h.symbol}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {h.name} · {h.shares} shares @ ${h.avgPrice.toFixed(2)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-display font-semibold text-foreground">${(h.currentPrice * h.shares).toFixed(2)}</p>
-                  <div className={`flex items-center justify-end gap-1 text-xs ${gain >= 0 ? "text-primary" : "text-destructive"}`}>
-                    {gain >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {totalGain >= 0 ? "+" : ""}${totalGain.toFixed(2)} ({gain.toFixed(2)}%)
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-          {realHoldings.length === 0 && <p className="text-sm text-muted-foreground text-center py-4">No holdings yet. Buy from Market!</p>}
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 mb-4">
+          <h2 className="font-display font-semibold text-foreground">Holdings</h2>
+          <p className="text-xs text-muted-foreground">Live prices refresh every 2 minutes.</p>
         </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-border/50">
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground">Symbol</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Price bought</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Shares</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Price now</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">P / L ($)</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">P / L (%)</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {realHoldings.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                  No holdings yet. Buy from Market!
+                </TableCell>
+              </TableRow>
+            ) : (
+              realHoldings.map((h) => {
+                const gainPct = h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0;
+                const totalGain = (h.currentPrice - h.avgPrice) * h.shares;
+                const up = totalGain >= 0;
+                const plClass = up ? "text-primary" : "text-destructive";
+                return (
+                  <TableRow key={h.symbol}>
+                    <TableCell className="px-3 py-2.5">
+                      <p className="font-display font-semibold text-foreground">{h.symbol}</p>
+                      <p className="text-[11px] text-muted-foreground truncate max-w-[10rem] sm:max-w-[14rem]">{h.name}</p>
+                    </TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">${h.avgPrice.toFixed(2)}</TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">{h.shares.toFixed(4)}</TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">${h.currentPrice.toFixed(2)}</TableCell>
+                    <TableCell className={`px-3 py-2.5 text-right tabular-nums ${plClass}`}>
+                      <span className="inline-flex items-center justify-end gap-1 text-sm font-display font-semibold">
+                        {up ? <TrendingUp className="h-3.5 w-3.5 shrink-0" /> : <TrendingDown className="h-3.5 w-3.5 shrink-0" />}
+                        {totalGain >= 0 ? "+" : "-"}${Math.abs(totalGain).toFixed(2)}
+                      </span>
+                    </TableCell>
+                    <TableCell className={`px-3 py-2.5 text-right tabular-nums text-sm font-medium ${plClass}`}>
+                      {gainPct >= 0 ? "+" : ""}
+                      {gainPct.toFixed(2)}%
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       <div className="glass-card p-5">
