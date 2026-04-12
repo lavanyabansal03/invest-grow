@@ -1,126 +1,181 @@
-import { useState, useEffect } from "react";
-import { Star, TrendingUp, TrendingDown, Plus, X } from "lucide-react";
+import { useMemo, useEffect, useState } from "react";
+import { Star, TrendingUp, TrendingDown, Plus, X, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { useQueryClient } from "@tanstack/react-query";
 import { getStockQuote } from "@/api/finnhub";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useWatchlist } from "@/hooks/usePaperPortfolio";
 
-const initialWatchlist = [
-  { symbol: "TSLA", name: "Tesla Inc.", price: 248.42, change: -2.10 },
-  { symbol: "META", name: "Meta Platforms", price: 505.15, change: 0.88 },
-];
+type Row = { id: string; symbol: string; name: string; price: number; change: number };
 
 export default function Watchlist() {
-  const [watchlist, setWatchlist] = useState(initialWatchlist);
-  const [newSymbol, setNewSymbol] = useState("");
+  const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { data: rows = [], isLoading } = useWatchlist();
+  const [newSymbol, setNewSymbol] = useState("");
+  const [display, setDisplay] = useState<Row[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const idsKey = useMemo(() => rows.map((r) => r.id).join(","), [rows]);
 
   useEffect(() => {
-    async function loadRealData() {
-      const updatedWatchlist = await Promise.all(
-        initialWatchlist.map(async (stock) => {
+    let cancelled = false;
+    async function quotes() {
+      if (!rows.length) {
+        if (!cancelled) setDisplay([]);
+        return;
+      }
+      const enriched = await Promise.all(
+        rows.map(async (r) => {
+          const sym = r.stock_symbol;
+          let price = 0;
+          let change = 0;
           try {
-            const data = await getStockQuote(stock.symbol);
-            return { ...stock, price: data.c, change: data.dp };
+            const q = await getStockQuote(sym);
+            price = q.c;
+            change = q.dp;
           } catch {
-            return stock;
+            /* ignore */
           }
-        })
+          return {
+            id: r.id,
+            symbol: sym,
+            name: r.display_name?.trim() || sym,
+            price,
+            change,
+          } satisfies Row;
+        }),
       );
-      setWatchlist(updatedWatchlist);
+      if (!cancelled) setDisplay(enriched);
     }
-    loadRealData();
-  }, []);
+    quotes();
+    return () => {
+      cancelled = true;
+    };
+  }, [idsKey, rows]);
 
   const addStock = async () => {
     if (!newSymbol.trim()) return;
-    if (watchlist.length >= 5) {
+    if (rows.length >= 5) {
       toast({ title: "Watchlist full", description: "Maximum 5 stocks allowed.", variant: "destructive" });
       return;
     }
-    if (watchlist.some((s) => s.symbol === newSymbol.toUpperCase())) {
-      toast({ title: "Already added", description: "This stock is already in your watchlist.", variant: "destructive" });
+    const sym = newSymbol.trim().toUpperCase();
+    if (rows.some((r) => r.stock_symbol === sym)) {
+      toast({ title: "Already added", description: "This symbol is already on your watchlist.", variant: "destructive" });
       return;
     }
 
-    const sym = newSymbol.toUpperCase();
-    let price = 100;
-    let change = 0;
-
-    try {
-      const data = await getStockQuote(sym);
-      price = data.c;
-      change = data.dp;
-    } catch {
-      toast({ title: "Failed to fetch stock", description: "Could not fetch data from Finnhub API.", variant: "destructive" });
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      toast({ title: "Sign in required", variant: "destructive" });
+      return;
     }
 
-    setWatchlist([...watchlist, { symbol: sym, name: sym, price, change }]);
-    setNewSymbol("");
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("watchlist").insert({
+        user_id: user.id,
+        stock_symbol: sym,
+        display_name: sym,
+      });
+      if (error) throw error;
+
+      setNewSymbol("");
+      await queryClient.invalidateQueries({ queryKey: ["watchlist"] });
+      toast({ title: "Added", description: `${sym} saved to Supabase.` });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Could not add.";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const removeStock = (symbol: string) => {
-    setWatchlist(watchlist.filter((s) => s.symbol !== symbol));
+  const removeStock = async (id: string) => {
+    setBusy(true);
+    try {
+      const { error } = await supabase.from("watchlist").delete().eq("id", id);
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ["watchlist"] });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Could not remove.";
+      toast({ title: "Error", description: message, variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
     <div className="p-6 space-y-6 max-w-2xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Watchlist</h1>
-        <p className="text-sm text-muted-foreground">{watchlist.length}/5 stocks</p>
+        <p className="text-sm text-muted-foreground">{rows.length}/5 stocks · stored in Supabase</p>
       </div>
 
-      {/* Add */}
       <div className="flex gap-2">
         <Input
           value={newSymbol}
           onChange={(e) => setNewSymbol(e.target.value)}
           placeholder="Add symbol (e.g. AAPL)"
           className="bg-secondary border-border text-foreground"
-          onKeyDown={(e) => e.key === "Enter" && addStock()}
+          onKeyDown={(e) => e.key === "Enter" && !busy && addStock()}
+          disabled={busy}
         />
-        <Button onClick={addStock} className="bg-primary text-primary-foreground hover:bg-primary/90">
-          <Plus className="h-4 w-4" />
+        <Button onClick={addStock} disabled={busy} className="bg-primary text-primary-foreground hover:bg-primary/90 shrink-0">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
         </Button>
       </div>
 
-      {/* List */}
-      <div className="space-y-3">
-        {watchlist.map((stock) => (
-          <motion.div
-            key={stock.symbol}
-            layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="glass-card p-4 flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <Star className="h-4 w-4 text-warning fill-warning" />
-              <div>
-                <p className="font-display font-semibold text-foreground">{stock.symbol}</p>
-                <p className="text-xs text-muted-foreground">{stock.name}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="font-display font-semibold text-foreground">${stock.price.toFixed(2)}</p>
-                <div className={`flex items-center gap-1 text-xs ${stock.change >= 0 ? "text-primary" : "text-destructive"}`}>
-                  {stock.change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {stock.change >= 0 ? "+" : ""}{stock.change.toFixed(2)}%
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {display.map((stock) => (
+            <motion.div
+              key={stock.id}
+              layout
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="glass-card p-4 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <Star className="h-4 w-4 text-warning fill-warning" />
+                <div>
+                  <p className="font-display font-semibold text-foreground">{stock.symbol}</p>
+                  <p className="text-xs text-muted-foreground">{stock.name}</p>
                 </div>
               </div>
-              <button onClick={() => removeStock(stock.symbol)} className="text-muted-foreground hover:text-destructive transition-colors">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </motion.div>
-        ))}
-        {watchlist.length === 0 && (
-          <p className="text-center text-muted-foreground py-8">Your watchlist is empty. Add stocks above!</p>
-        )}
-      </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="font-display font-semibold text-foreground">${stock.price.toFixed(2)}</p>
+                  <div className={`flex items-center justify-end gap-1 text-xs ${stock.change >= 0 ? "text-primary" : "text-destructive"}`}>
+                    {stock.change >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {stock.change >= 0 ? "+" : ""}
+                    {stock.change.toFixed(2)}%
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => removeStock(stock.id)}
+                  className="text-muted-foreground hover:text-destructive transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+          {display.length === 0 && <p className="text-center text-muted-foreground py-8">Your watchlist is empty. Add symbols above!</p>}
+        </div>
+      )}
     </div>
   );
 }

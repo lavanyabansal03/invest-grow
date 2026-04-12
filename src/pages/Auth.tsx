@@ -36,11 +36,11 @@ export default function Auth() {
           title: "Account created!",
           description: "Check your email to verify your account, or continue if auto-confirmed.",
         });
-        navigate("/onboarding");
+        navigate("/onboarding", { replace: true });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        navigate("/dashboard");
+        navigate("/dashboard", { replace: true });
       }
     } catch (error: any) {
       toast({
