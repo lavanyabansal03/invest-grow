@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, send_from_directory
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -6,6 +6,10 @@ import requests
 import os
 from dotenv import load_dotenv
 
+app = Flask(__name__, static_folder="../dist", static_url_path="")
+@app.route("/")
+def serve():
+    return send_from_directory(app.static_folder, "index.html")
 
 def _repo_root() -> str:
     return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
