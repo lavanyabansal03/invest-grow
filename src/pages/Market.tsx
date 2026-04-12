@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { Search, TrendingUp, TrendingDown, Loader2, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useQueryClient } from "@tanstack/react-query";
 import { getStockQuote, searchStocks, type FinnhubSearchItem } from "@/api/finnhub";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { useUserProfile, useWatchlist, type WatchlistRow } from "@/hooks/usePaperPortfolio";
-import { num } from "@/lib/money";
+import { useWatchlist, type WatchlistRow } from "@/hooks/usePaperPortfolio";
 
 const MAX_WATCHLIST = 5;
 
@@ -77,18 +76,13 @@ async function hydrateQuotes(rows: { symbol: string; name: string }[]): Promise<
 export default function Market() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const { data: profile } = useUserProfile();
   const { data: watchlistData, isLoading: watchlistLoading } = useWatchlist();
   const watchlistRows = watchlistData ?? EMPTY_WATCHLIST;
 
   const [query, setQuery] = useState("");
-  const [selectedStock, setSelectedStock] = useState<StockRow | null>(null);
-  const [buyMode, setBuyMode] = useState<"shares" | "dollars">("shares");
-  const [buyAmount, setBuyAmount] = useState("");
   const [curatedList, setCuratedList] = useState<StockRow[]>([]);
   const [searchResults, setSearchResults] = useState<StockRow[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [buyLoading, setBuyLoading] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const [watchDisplay, setWatchDisplay] = useState<WatchDisplayRow[]>([]);
 
@@ -222,25 +216,6 @@ export default function Market() {
     });
   }, [displayStocksBase, watchSymbols, watchOrderRank]);
 
-  useEffect(() => {
-    if (!selectedStock?.symbol) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const q = await getStockQuote(selectedStock.symbol);
-        if (cancelled) return;
-        setSelectedStock((prev) =>
-          prev && prev.symbol === selectedStock.symbol ? { ...prev, price: q.c, change: q.dp } : prev,
-        );
-      } catch {
-        /* keep last price */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedStock?.symbol]);
-
   const addToWatchlist = async (stock: StockRow) => {
     const sym = stock.symbol.toUpperCase();
     if (watchSymbols.has(sym)) {
@@ -296,70 +271,15 @@ export default function Market() {
     }
   };
 
-  const cash = profile ? num(profile.cash_balance) : 0;
-
-  const computeShares = (): number | null => {
-    if (!selectedStock || !buyAmount.trim()) return null;
-    const raw = parseFloat(buyAmount);
-    if (!Number.isFinite(raw) || raw <= 0) return null;
-    if (buyMode === "shares") return raw;
-    const s = raw / selectedStock.price;
-    return Math.round(s * 1e6) / 1e6;
-  };
-
-  const handleBuy = async () => {
-    if (!selectedStock) return;
-    const shares = computeShares();
-    if (shares == null || shares <= 0) {
-      toast({ title: "Invalid amount", description: "Enter a valid number of shares or dollars.", variant: "destructive" });
-      return;
-    }
-
-    const total = shares * selectedStock.price;
-    if (total > cash + 1e-6) {
-      toast({ title: "Insufficient cash", description: `You have $${cash.toFixed(2)} available.`, variant: "destructive" });
-      return;
-    }
-
-    setBuyLoading(true);
-    try {
-      const { error } = await supabase.rpc("execute_paper_buy", {
-        p_symbol: selectedStock.symbol,
-        p_company_name: selectedStock.name,
-        p_shares: shares,
-        p_price: selectedStock.price,
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: `Bought ${selectedStock.symbol}`,
-        description: `${shares.toFixed(4)} shares for ~$${total.toFixed(2)}.`,
-      });
-      setBuyAmount("");
-      await queryClient.invalidateQueries({ queryKey: ["profile"] });
-      await queryClient.invalidateQueries({ queryKey: ["holdings"] });
-      await queryClient.invalidateQueries({ queryKey: ["transactions"] });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Buy failed.";
-      toast({ title: "Order failed", description: message, variant: "destructive" });
-    } finally {
-      setBuyLoading(false);
-    }
-  };
-
   const showEmptySearch =
     query.trim().length > 0 && !searchLoading && searchResults !== null && displayStocks.length === 0;
-
-  const selectedOnWatchlist = selectedStock ? watchSymbols.has(selectedStock.symbol.toUpperCase()) : false;
 
   return (
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Market</h1>
         <p className="text-sm text-muted-foreground">
-          Search and buy paper shares · use the star on each row (or “Add to watchlist” when selected) to track up to {MAX_WATCHLIST}{" "}
-          symbols — list updates live below.
+          Click a row to open the stock detail page (quote, trade, Google Finance chart). Star a row to track it (max {MAX_WATCHLIST}).
         </p>
       </div>
 
@@ -390,13 +310,11 @@ export default function Market() {
                   layout
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`glass-card flex items-stretch overflow-hidden transition-all ${
-                    selectedStock?.symbol === stock.symbol ? "ring-1 ring-primary/40 border-primary/50" : ""
-                  }`}
+                  className="glass-card flex items-stretch overflow-hidden transition-all"
                 >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStock(stock)}
+                  <Link
+                    to={`/market/${encodeURIComponent(stock.symbol)}`}
+                    state={{ name: stock.name }}
                     className="flex flex-1 min-w-0 items-center justify-between gap-3 p-4 text-left hover:bg-muted/30"
                   >
                     <div className="min-w-0 pr-2">
@@ -413,7 +331,7 @@ export default function Market() {
                         {stock.change.toFixed(2)}%
                       </div>
                     </div>
-                  </button>
+                  </Link>
                   <button
                     type="button"
                     disabled={watchBusy || onList}
@@ -438,94 +356,7 @@ export default function Market() {
         </div>
 
         <div className="space-y-6">
-          <div className="glass-card p-5 h-fit lg:sticky lg:top-6">
-            {profile && (
-              <p className="text-xs text-muted-foreground mb-3">
-                Cash balance:{" "}
-                <span className="font-display font-semibold text-foreground">
-                  ${cash.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-              </p>
-            )}
-            {selectedStock ? (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="font-display text-lg font-bold text-foreground">{selectedStock.symbol}</h2>
-                  <p className="text-sm text-muted-foreground">{selectedStock.name}</p>
-                  <p className="text-2xl font-display font-bold text-foreground mt-2">${selectedStock.price.toFixed(2)}</p>
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-border"
-                  disabled={watchBusy || selectedOnWatchlist || watchlistRows.length >= MAX_WATCHLIST}
-                  onClick={() => void addToWatchlist(selectedStock)}
-                >
-                  <Star className="h-4 w-4 mr-2" />
-                  {selectedOnWatchlist ? "On watchlist" : "Add to watchlist"}
-                </Button>
-
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={buyMode === "shares" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setBuyMode("shares")}
-                    className={buyMode === "shares" ? "bg-primary text-primary-foreground" : "border-border text-muted-foreground"}
-                  >
-                    Shares
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={buyMode === "dollars" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setBuyMode("dollars")}
-                    className={buyMode === "dollars" ? "bg-primary text-primary-foreground" : "border-border text-muted-foreground"}
-                  >
-                    Dollars
-                  </Button>
-                </div>
-
-                <Input
-                  type="number"
-                  value={buyAmount}
-                  onChange={(e) => setBuyAmount(e.target.value)}
-                  placeholder={buyMode === "shares" ? "Number of shares" : "Dollar amount"}
-                  className="bg-secondary border-border text-foreground"
-                />
-
-                {buyAmount && (
-                  <p className="text-xs text-muted-foreground">
-                    {buyMode === "shares"
-                      ? `Total: $${(parseFloat(buyAmount) * selectedStock.price).toFixed(2)}`
-                      : `≈ ${(parseFloat(buyAmount) / selectedStock.price).toFixed(6)} shares`}
-                  </p>
-                )}
-
-                <Button
-                  type="button"
-                  disabled={buyLoading || !computeShares()}
-                  onClick={handleBuy}
-                  className="w-full bg-primary text-primary-foreground hover:bg-primary/90 font-display font-semibold flex items-center justify-center gap-2"
-                >
-                  {buyLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                      Processing…
-                    </>
-                  ) : (
-                    `Buy ${selectedStock.symbol}`
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <p className="text-center text-muted-foreground text-sm py-6">Select a stock to trade or track</p>
-            )}
-          </div>
-
-          <div className="glass-card p-5 border-border/80">
+          <div className="glass-card p-5 border-border/80 lg:sticky lg:top-6">
             <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="font-display text-sm font-bold text-foreground uppercase tracking-wide">Watchlist</h2>
               <span className="text-xs text-muted-foreground tabular-nums">
@@ -545,13 +376,17 @@ export default function Market() {
                     key={w.id}
                     className="flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-2.5"
                   >
-                    <div className="min-w-0 flex items-center gap-2">
+                    <Link
+                      to={`/market/${encodeURIComponent(w.symbol)}`}
+                      state={{ name: w.name }}
+                      className="min-w-0 flex flex-1 items-center gap-2 hover:opacity-90"
+                    >
                       <Star className="h-3.5 w-3.5 shrink-0 text-warning fill-warning" />
                       <div className="min-w-0">
                         <p className="font-display text-sm font-semibold text-foreground">{w.symbol}</p>
                         <p className="text-[10px] text-muted-foreground truncate">{w.name}</p>
                       </div>
-                    </div>
+                    </Link>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
                         <p className="font-display text-xs font-semibold text-foreground tabular-nums">
