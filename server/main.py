@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -37,7 +37,7 @@ def finnhub_token() -> str:
 app = Flask(__name__)
 CORS(
     app,
-    resources={r"/api/*": {"origins": "*", "methods": ["GET", "HEAD", "OPTIONS"]}},
+    resources={r"/api/*": {"origins": "*", "methods": ["GET", "HEAD", "POST", "OPTIONS"]}},
     supports_credentials=False,
 )
 
@@ -49,6 +49,19 @@ limiter = Limiter(
 )
 
 FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
+ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1"
+
+
+def elevenlabs_api_key() -> str:
+    return (os.getenv("ELEVENLABS_API_KEY") or "").strip()
+
+
+def elevenlabs_default_voice_id() -> str:
+    return (os.getenv("ELEVENLABS_VOICE_ID") or "").strip()
+
+
+def elevenlabs_model_id() -> str:
+    return (os.getenv("ELEVENLABS_MODEL_ID") or "eleven_multilingual_v2").strip()
 
 # macOS Monterey+ often binds AirPlay to :5000; it answers HTTP with 403 — not Flask.
 BACKEND_DEFAULT_PORT = 5050
@@ -98,6 +111,9 @@ if not finnhub_token():
     )
 else:
     print(f"Finnhub: FINNHUB_API_KEY loaded ({len(finnhub_token())} chars)")
+
+if not elevenlabs_api_key():
+    print("INFO: ELEVENLABS_API_KEY unset — chat Live voice (/api/elevenlabs/tts) will return 503 until set.")
 
 
 @app.route('/api/stocks/search', methods=['GET'])
@@ -208,6 +224,54 @@ def market_news():
         return jsonify(body), code
     except (requests.RequestException, ValueError) as e:
         return jsonify({"error": "Failed to fetch market news", "details": str(e)}), 500
+
+
+@app.route("/api/elevenlabs/tts", methods=["POST"])
+@limiter.limit("15 per minute")
+def elevenlabs_tts():
+    """Proxy text-to-speech so the ElevenLabs API key stays on the server. Optional JSON voice_id overrides default."""
+    key = elevenlabs_api_key()
+    if not key:
+        return jsonify({"error": "ELEVENLABS_API_KEY is not configured on the server"}), 503
+    data = request.get_json(silent=True) or {}
+    text = (data.get("text") or "").strip()
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    if len(text) > 8000:
+        text = text[:8000]
+    voice_id = (data.get("voice_id") or "").strip() or elevenlabs_default_voice_id()
+    if not voice_id:
+        return (
+            jsonify(
+                {
+                    "error": "voice_id is required",
+                    "details": "Set ELEVENLABS_VOICE_ID in server .env or pass voice_id in the JSON body (from ElevenLabs Voice Lab).",
+                }
+            ),
+            400,
+        )
+    url = f"{ELEVENLABS_BASE_URL}/text-to-speech/{voice_id}"
+    payload = {"text": text, "model_id": elevenlabs_model_id()}
+    try:
+        r = requests.post(
+            url,
+            json=payload,
+            headers={"xi-api-key": key, "Accept": "audio/mpeg"},
+            timeout=120,
+        )
+        if not r.ok:
+            detail = r.text[:500] if r.text else r.reason
+            try:
+                err_json = r.json()
+                if isinstance(err_json, dict):
+                    detail = str(err_json.get("detail") or err_json.get("message") or err_json)[:500]
+            except (ValueError, TypeError):
+                pass
+            return jsonify({"error": "ElevenLabs request failed", "details": detail, "status": r.status_code}), 502
+        ct = r.headers.get("Content-Type") or "audio/mpeg"
+        return Response(r.content, mimetype=ct, headers={"Cache-Control": "no-store"})
+    except requests.RequestException as e:
+        return jsonify({"error": "Failed to reach ElevenLabs", "details": str(e)}), 502
 
 
 if __name__ == '__main__':
