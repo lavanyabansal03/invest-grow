@@ -8,6 +8,7 @@ export type TransactionRow = Tables<"transactions">;
 export type SoldStockRow = Tables<"sold_stocks">;
 export type WatchlistRow = Tables<"watchlist">;
 
+/** Single row from `public.profiles` where `user_id` equals the signed-in user (`auth.users.id`). */
 export function useUserProfile() {
   return useQuery({
     queryKey: ["profile"],
@@ -17,7 +18,12 @@ export function useUserProfile() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return null;
-      const { data, error } = await supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle();
+      const userId = user.id;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
       if (error) throw error;
       return data;
     },
