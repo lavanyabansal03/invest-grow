@@ -1,6 +1,5 @@
-import { LayoutDashboard, BarChart3, Briefcase, Star, Trophy, TrendingUp, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Briefcase, Star, Trophy, TrendingUp } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -23,7 +22,6 @@ const items = [
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
-  const location = useLocation();
 
   return (
     <Sidebar collapsible="icon">

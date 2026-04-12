@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Neutral Coin</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 2rem;
+      background: #f9f7f2;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    .coin-card {
+      background: #fff;
+      border-radius: 14px;
+      border: 1px solid #e5e5e5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 24px 14px;
+      gap: 8px;
+    }
+    .coin-label {
+      font-size: 13px;
+      color: #888;
+    }
+    @keyframes blink {
+      0%, 92%, 100% { transform: scaleY(1); }
+      95%            { transform: scaleY(0.05); }
+    }
+    .eye {
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: blink 3s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body>
+  <div class="coin-card">
+    <svg width="130" height="160" viewBox="0 0 110 135">
+      <defs>
+        <clipPath id="coinSmileClip">
+          <rect x="36" y="59" width="38" height="18" />
+        </clipPath>
+      </defs>
+      <circle cx="55" cy="55" r="32" fill="#b3b3b3" stroke="#8a8a8a" stroke-width="0.9"/>
+      <circle cx="55" cy="55" r="26.5" fill="#9c9c9c"/>
+      <circle cx="55" cy="55" r="26.5" fill="none" stroke="#8a8a8a" stroke-width="0.75" opacity="0.45"/>
+      <path d="M 32 42 A 28 28 0 0 1 48 28" fill="none" stroke="#d4d4d4" stroke-width="3.2" stroke-linecap="round" opacity="0.85"/>
+      <ellipse cx="35" cy="52" rx="4.2" ry="2.4" fill="#fb7185" opacity="0.72"/>
+      <ellipse cx="75" cy="52" rx="4.2" ry="2.4" fill="#fb7185" opacity="0.72"/>
+      <ellipse class="eye" cx="42.5" cy="48.5" rx="1.55" ry="3.1" fill="#0a0a0a"/>
+      <ellipse class="eye" cx="67.5" cy="48.5" rx="1.55" ry="3.1" fill="#0a0a0a"/>
+      <ellipse cx="55" cy="63.5" rx="11" ry="7" fill="#0a0a0a" clip-path="url(#coinSmileClip)"/>
+      <ellipse cx="55" cy="67.2" rx="4.4" ry="1.95" fill="#f472b6" clip-path="url(#coinSmileClip)"/>
+      <ellipse cx="48.5" cy="101.5" rx="4.9" ry="2.7" fill="#b3b3b3" stroke="#8a8a8a" stroke-width="0.75"/>
+      <ellipse cx="61.5" cy="101.5" rx="4.9" ry="2.7" fill="#b3b3b3" stroke="#8a8a8a" stroke-width="0.75"/>
+      <path d="M 48.5 87 L 48.5 99.2" fill="none" stroke="#8a8a8a" stroke-width="2.1" stroke-linecap="round"/>
+      <path d="M 61.5 87 L 61.5 99.2" fill="none" stroke="#8a8a8a" stroke-width="2.1" stroke-linecap="round"/>
+      <path d="M 23 54 Q 16 46 13.5 37.5" fill="none" stroke="#8a8a8a" stroke-width="2.1" stroke-linecap="round"/>
+      <path d="M 87 54 Q 93 64 96.5 74.5" fill="none" stroke="#8a8a8a" stroke-width="2.1" stroke-linecap="round"/>
+      <circle cx="10.8" cy="34.2" r="3.85" fill="#b3b3b3" stroke="#8a8a8a" stroke-width="0.75"/>
+      <circle cx="99.2" cy="75.8" r="3.85" fill="#b3b3b3" stroke="#8a8a8a" stroke-width="0.75"/>
+    </svg>
+    <span class="coin-label">neutral</span>
+  </div>
+</body>
+</html>

@@ -1,7 +1,6 @@
 import { TrendingUp, TrendingDown, Flame, Target, DollarSign, BarChart3 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
-
 const mockChartData = [
   { day: "Mon", value: 5000 },
   { day: "Tue", value: 5120 },
