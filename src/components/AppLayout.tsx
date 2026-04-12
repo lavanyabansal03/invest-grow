@@ -5,12 +5,31 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { Chatbot } from "@/components/Chatbot";
+import { CheerfulCoinMascot } from "@/components/CheerfulCoinMascot";
 import { NeutralCoinMascot } from "@/components/NeutralCoinMascot";
 import { useSidebar } from "@/components/ui/sidebar";
 
+const PAPER_STOCK_BUY_EVENT = "paper-stock-buy";
+const CHEERFUL_COIN_MS = 5000;
+
 function AppLayoutContent() {
   const [isChatbotOpen, setIsChatbotOpen] = useState(false);
+  const [cheerfulCoin, setCheerfulCoin] = useState(false);
   const { toggleSidebar, state } = useSidebar();
+
+  useEffect(() => {
+    let timeoutId: number | undefined;
+    const onBuy = () => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      setCheerfulCoin(true);
+      timeoutId = window.setTimeout(() => setCheerfulCoin(false), CHEERFUL_COIN_MS);
+    };
+    window.addEventListener(PAPER_STOCK_BUY_EVENT, onBuy);
+    return () => {
+      window.removeEventListener(PAPER_STOCK_BUY_EVENT, onBuy);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, []);
 
   const handleMascotClick = () => {
     // If sidebar is collapsed, open it first
@@ -82,10 +101,19 @@ function AppLayoutContent() {
           </div>
           <div
             onClick={handleMascotClick}
-            className="cursor-pointer p-1 rounded-md hover:bg-primary/10 transition-colors"
+            className="cursor-pointer flex items-center gap-2 p-1 rounded-md hover:bg-primary/10 transition-colors max-w-[min(100vw-5rem,18rem)]"
             title="AI Assistant"
           >
-            <NeutralCoinMascot className="scale-[0.9] origin-top-right -mb-28 -ml-38" />
+            {cheerfulCoin && (
+              <p className="text-xs font-medium text-primary text-right leading-snug shrink min-w-0">
+                hooray! You bought a stock!
+              </p>
+            )}
+            {cheerfulCoin ? (
+              <CheerfulCoinMascot className="scale-[0.9] origin-top-right -mb-28 -ml-38 shrink-0" />
+            ) : (
+              <NeutralCoinMascot className="scale-[0.9] origin-top-right -mb-28 -ml-38 shrink-0" />
+            )}
           </div>
         </header>
         <main className="flex-1 overflow-y-auto">

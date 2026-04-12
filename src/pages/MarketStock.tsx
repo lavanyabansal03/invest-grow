@@ -161,6 +161,7 @@ export default function MarketStock() {
         p_price: livePrice,
       });
       if (error) throw error;
+      window.dispatchEvent(new CustomEvent("paper-stock-buy"));
       toast({ title: `Bought ${stock.symbol}`, description: `${shares.toFixed(4)} shares for ~$${total.toFixed(2)}.` });
       setBuyAmount("");
       await queryClient.invalidateQueries({ queryKey: ["profile"] });
