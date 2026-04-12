@@ -149,24 +149,14 @@ export default function Landing() {
       <section className="py-16 px-6 bg-card/50">
         <div className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-3 gap-12">
-            {/* Products */}
+            {/* Resources */}
             <div>
-              <h3 className="font-display font-semibold text-foreground mb-6">Products</h3>
+              <h3 className="font-display font-semibold text-foreground mb-6">Resources</h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-xs uppercase font-semibold text-muted-foreground mb-2">Supabase</p>
                   <ul className="space-y-2 text-sm text-muted-foreground">
-                    <a href="#" className="hover:text-foreground transition-colors">Database</a><br />
-                    <a href="#" className="hover:text-foreground transition-colors">Authentication</a><br />
-                    <a href="#" className="hover:text-foreground transition-colors">Storage</a>
-                  </ul>
-                </div>
-                <div>
-                  <p className="text-xs uppercase font-semibold text-muted-foreground mb-2">FinHub</p>
-                  <ul className="space-y-2 text-sm text-muted-foreground">
-                    <a href="#" className="hover:text-foreground transition-colors">Market Data</a><br />
-                    <a href="#" className="hover:text-foreground transition-colors">Real-time Quotes</a><br />
-                    <a href="#" className="hover:text-foreground transition-colors">Analytics</a>
+                    <a href="#" className="hover:text-foreground transition-colors">Supabase</a><br />
+                    <a href="#" className="hover:text-foreground transition-colors">FinHub</a>
                   </ul>
                 </div>
               </div>
