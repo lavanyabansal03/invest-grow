@@ -1,8 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
+import type { User } from "@supabase/supabase-js";
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type ProfileRow = Tables<"profiles">;
+
+/** Signup handle from `signUp({ options: { data: { username } } })` — preferred over `profiles.username` when the row is wrong or stale. */
+function usernameFromAuthMetadata(user: User): string {
+  const raw = (user.user_metadata as Record<string, unknown> | undefined)?.username;
+  return typeof raw === "string" ? raw.trim() : "";
+}
 export type HoldingRow = Tables<"holdings">;
 export type TransactionRow = Tables<"transactions">;
 export type SoldStockRow = Tables<"sold_stocks">;
@@ -25,7 +32,11 @@ export function useUserProfile() {
         .eq("user_id", userId)
         .maybeSingle();
       if (error) throw error;
-      return data;
+      if (!data) return null;
+      const fromAuth = usernameFromAuthMetadata(user);
+      const fromDb = String(data.username ?? "").trim();
+      const username = fromAuth || fromDb;
+      return { ...data, username };
     },
   });
 }
