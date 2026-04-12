@@ -297,7 +297,7 @@ export default function Market() {
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Market</h1>
         <p className="text-sm text-muted-foreground">
-          Click a row to open the stock detail page (quote, trade, Google Finance chart). Star a row to track it (max {MAX_WATCHLIST}).
+          Find the stock that you want to trade, then invest in it with Finto Coins.
         </p>
       </div>
 

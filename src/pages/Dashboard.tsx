@@ -51,7 +51,10 @@ export default function Dashboard() {
   const cashBalance = profile ? num(profile.cash_balance) : 0;
   const startingCash = profile ? Math.max(num(profile.starting_cash), 1) : 1;
   const confidence = profile?.confidence_score ?? 0;
-  const displayName = profile?.username?.trim() || profile?.email?.split("@")[0] || "Trader";
+  /** `profiles.username` for the row whose `user_id` matches the current user (loaded via `useUserProfile`). */
+  const rawUsername =
+    profile?.user_id != null && profile.username != null ? String(profile.username).trim() : "";
+  const username = rawUsername.length > 0 ? rawUsername : "Trader";
 
   const holdingKey = useMemo(
     () => holdings.map((h) => `${h.stock_symbol}:${h.shares}:${h.avg_buy_price}`).join("|"),
@@ -117,7 +120,7 @@ export default function Dashboard() {
     <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <div>
         <h1 className="font-display text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground font-body">Welcome back, {displayName}!</p>
+        <p className="text-sm text-muted-foreground font-body">Welcome back, {username}!</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
