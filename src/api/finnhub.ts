@@ -45,6 +45,34 @@ export interface FinnhubQuote {
   pc: number;
 }
 
+export interface FinnhubSearchItem {
+  description: string;
+  displaySymbol: string;
+  symbol: string;
+  type: string;
+}
+
+export interface FinnhubSearchResponse {
+  count?: number;
+  result?: FinnhubSearchItem[];
+}
+
+/** Finnhub symbol search (US & global). Results are filtered client-side for tradable names. */
+export async function searchStocks(query: string): Promise<FinnhubSearchItem[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const response = await fetch(stocksUrl(`/search?q=${encodeURIComponent(q)}`));
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error("Rate limit exceeded (50 calls/min). Please try again later.");
+    }
+    const msg = await readErrorMessage(response);
+    throw new Error(msg || "Search failed");
+  }
+  const data = (await response.json()) as FinnhubSearchResponse;
+  return Array.isArray(data.result) ? data.result : [];
+}
+
 export interface FinnhubProfile {
   country: string;
   currency: string;
