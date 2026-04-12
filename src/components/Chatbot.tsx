@@ -439,9 +439,9 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
               <div className="flex items-center gap-3">
                 <NeutralCoinMascot className="scale-[0.9] translate-y-4" />
                 <div>
-                  <h3 className="font-display font-semibold text-foreground text-lg ml-7">AI Assistant</h3>
+                  <h3 className="font-display font-semibold text-foreground text-lg ml-7">Meet, Fin!</h3>
                   <p className="text-sm text-muted-foreground ml-4">
-                    {liveSession ? "Live — speak naturally; pauses send automatically." : "Type or turn on live voice."}
+                    {liveSession ? "Live — speak naturally; pauses send automatically." : "your trading companion"}
                   </p>
                 </div>
               </div>
