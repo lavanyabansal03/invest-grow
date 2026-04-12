@@ -118,21 +118,16 @@ function PodiumSlot({ entry, place, delayIndex }: PodiumSlotProps) {
         )}
       >
         {isFirst && (
-          <div className="absolute -top-3 left-1/2 z-10 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-[hsl(48_100%_65%/0.95)] bg-[hsl(48_100%_54%/0.4)] shadow-[0_0_18px_hsl(48_100%_55%/0.5)]">
+          <div className="absolute -top-12 left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-[hsl(48_100%_65%/0.95)] bg-[hsl(48_100%_54%/0.4)] shadow-[0_0_18px_hsl(48_100%_55%/0.5)]">
             <Crown className="h-4 w-4 text-[hsl(52_100%_76%)] drop-shadow-[0_0_8px_hsl(48_100%_55%/0.9)]" aria-hidden />
           </div>
         )}
 
-        <div
-          className={cn(
-            "flex flex-1 flex-col items-center justify-center gap-2 px-3 text-center",
-            isFirst ? "pt-9 pb-2" : "pt-7 pb-2",
-          )}
-        >
+        <div className={cn("flex flex-1 flex-col items-center justify-center gap-2 px-3 pt-7 pb-2 text-center")}>
           <Avatar
             className={cn(
               "ring-2 ring-offset-2 ring-offset-[hsl(220_22%_8%)]",
-              isFirst && "h-14 w-14 ring-[hsl(48_100%_58%/0.95)] shadow-[0_0_22px_hsl(48_100%_55%/0.38)]",
+              isFirst && "-translate-y-3 h-14 w-14 ring-[hsl(48_100%_58%/0.95)] shadow-[0_0_22px_hsl(48_100%_55%/0.38)]",
               isSecond && "h-11 w-11 ring-[hsl(210_35%_82%/0.9)] shadow-[0_0_16px_hsl(210_40%_80%/0.25)]",
               isThird && "h-11 w-11 ring-[hsl(28_90%_55%/0.95)] shadow-[0_0_16px_hsl(28_85%_48%/0.32)]",
             )}
@@ -222,7 +217,7 @@ export function LeaderboardTopFive({ entries = MOCK_LEADERBOARD_TOP_FIVE, classN
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_100%_70%_at_50%_50%,transparent_40%,hsl(220_30%_4%/0.85)_100%)]" />
         </div>
 
-        <div className="relative z-[1] flex items-end justify-center gap-2 px-3 pb-10 pt-14 sm:gap-5 sm:px-6 sm:pb-12 sm:pt-16">
+        <div className="relative z-[1] flex items-end justify-center gap-2 px-3 pb-10 pt-24 sm:gap-5 sm:px-6 sm:pb-12 sm:pt-28">
           {second && <PodiumSlot entry={second} place="second" delayIndex={0} />}
           {first && <PodiumSlot entry={first} place="first" delayIndex={1} />}
           {third && <PodiumSlot entry={third} place="third" delayIndex={2} />}
