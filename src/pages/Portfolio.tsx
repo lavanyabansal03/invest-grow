@@ -1,30 +1,84 @@
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion } from "framer-motion";
+import { getStockQuote } from "@/api/finnhub";
 import { TrendingUp, TrendingDown, Target } from "lucide-react";
+import { useUserProfile, useHoldings, useTransactions } from "@/hooks/usePaperPortfolio";
+import { num } from "@/lib/money";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-const holdings = [
-  { symbol: "AAPL", name: "Apple Inc.", shares: 5, avgPrice: 182.50, currentPrice: 189.84 },
-  { symbol: "NVDA", name: "NVIDIA Corp.", shares: 2, avgPrice: 850.00, currentPrice: 875.38 },
-];
+type HoldingView = {
+  symbol: string;
+  name: string;
+  shares: number;
+  avgPrice: number;
+  currentPrice: number;
+};
 
-const tradeHistory = [
-  { date: "2024-01-15", type: "BUY", symbol: "AAPL", shares: 5, price: 182.50 },
-  { date: "2024-01-16", type: "BUY", symbol: "NVDA", shares: 2, price: 850.00 },
-];
+/** Finnhub quotes for holdings refresh on this interval (ms). */
+const HOLDINGS_QUOTE_REFRESH_MS = 2 * 60 * 1000;
 
 export default function Portfolio() {
-  const cashBalance = 3474.12;
-  const portfolioValue = holdings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
+  const { data: profile } = useUserProfile();
+  const { data: holdings = [] } = useHoldings();
+  const { data: transactions = [] } = useTransactions(80);
+
+  const [realHoldings, setRealHoldings] = useState<HoldingView[]>([]);
+  const holdingsRef = useRef(holdings);
+  holdingsRef.current = holdings;
+
+  const cashBalance = profile ? num(profile.cash_balance) : 0;
+  const confidence = profile?.confidence_score ?? 0;
+
+  const holdingKey = useMemo(
+    () => holdings.map((h) => `${h.stock_symbol}:${h.shares}:${h.avg_buy_price}`).join("|"),
+    [holdings],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHoldings() {
+      const list = holdingsRef.current;
+      if (!list.length) {
+        if (!cancelled) setRealHoldings([]);
+        return;
+      }
+      const rows = await Promise.all(
+        list.map(async (h) => {
+          const shares = num(h.shares);
+          const avgPrice = num(h.avg_buy_price);
+          let currentPrice = avgPrice;
+          try {
+            const data = await getStockQuote(h.stock_symbol);
+            currentPrice = data.c;
+          } catch {
+            /* fallback */
+          }
+          const name = h.company_name?.trim() || h.stock_symbol;
+          return { symbol: h.stock_symbol, name, shares, avgPrice, currentPrice };
+        }),
+      );
+      if (!cancelled) setRealHoldings(rows);
+    }
+
+    void loadHoldings();
+    const intervalId = window.setInterval(() => void loadHoldings(), HOLDINGS_QUOTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [holdingKey]);
+
+  const portfolioValue = realHoldings.reduce((sum, h) => sum + h.currentPrice * h.shares, 0);
   const totalValue = cashBalance + portfolioValue;
-  const confidence = 42;
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-6 space-y-6 max-w-6xl mx-auto">
       <h1 className="font-display text-2xl font-bold text-foreground">Portfolio</h1>
 
-      {/* Summary */}
       <div className="grid sm:grid-cols-3 gap-4">
         {[
-          { label: "Cash Balance", value: `$${cashBalance.toLocaleString()}` },
+          { label: "Cash Balance", value: `$${cashBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}` },
           { label: "Portfolio Value", value: `$${portfolioValue.toFixed(2)}` },
           { label: "Total Value", value: `$${totalValue.toFixed(2)}` },
         ].map((s, i) => (
@@ -35,7 +89,6 @@ export default function Portfolio() {
         ))}
       </div>
 
-      {/* Confidence */}
       <div className="glass-card p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
@@ -45,38 +98,66 @@ export default function Portfolio() {
           <span className="font-display font-bold text-warning">{confidence}/100</span>
         </div>
         <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
-          <div className="h-full bg-warning rounded-full transition-all" style={{ width: `${confidence}%` }} />
+          <div className="h-full bg-warning rounded-full transition-all" style={{ width: `${Math.min(100, confidence)}%` }} />
         </div>
-        <p className="text-xs text-muted-foreground mt-2">Keep learning and trading to increase your confidence!</p>
       </div>
 
-      {/* Holdings */}
       <div className="glass-card p-5">
-        <h2 className="font-display font-semibold text-foreground mb-4">Holdings</h2>
-        <div className="space-y-3">
-          {holdings.map((h) => {
-            const gain = ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100;
-            const totalGain = (h.currentPrice - h.avgPrice) * h.shares;
-            return (
-              <div key={h.symbol} className="flex items-center justify-between py-3 border-b border-border/30 last:border-0">
-                <div>
-                  <p className="font-display font-semibold text-foreground">{h.symbol}</p>
-                  <p className="text-xs text-muted-foreground">{h.name} · {h.shares} shares @ ${h.avgPrice}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-display font-semibold text-foreground">${(h.currentPrice * h.shares).toFixed(2)}</p>
-                  <div className={`flex items-center justify-end gap-1 text-xs ${gain >= 0 ? "text-primary" : "text-destructive"}`}>
-                    {gain >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                    {totalGain >= 0 ? "+" : ""}${totalGain.toFixed(2)} ({gain.toFixed(2)}%)
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1 mb-4">
+          <h2 className="font-display font-semibold text-foreground">Holdings</h2>
+          <p className="text-xs text-muted-foreground">Live prices refresh every 2 minutes.</p>
         </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent border-border/50">
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground">Symbol</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Price bought</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Shares</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">Price now</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">P / L ($)</TableHead>
+              <TableHead className="h-10 px-3 text-xs text-muted-foreground text-right">P / L (%)</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {realHoldings.length === 0 ? (
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+                  No holdings yet. Buy from Market!
+                </TableCell>
+              </TableRow>
+            ) : (
+              realHoldings.map((h) => {
+                const gainPct = h.avgPrice > 0 ? ((h.currentPrice - h.avgPrice) / h.avgPrice) * 100 : 0;
+                const totalGain = (h.currentPrice - h.avgPrice) * h.shares;
+                const up = totalGain >= 0;
+                const plClass = up ? "text-primary" : "text-destructive";
+                return (
+                  <TableRow key={h.symbol}>
+                    <TableCell className="px-3 py-2.5">
+                      <p className="font-display font-semibold text-foreground">{h.symbol}</p>
+                      <p className="text-[11px] text-muted-foreground truncate max-w-[10rem] sm:max-w-[14rem]">{h.name}</p>
+                    </TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">${h.avgPrice.toFixed(2)}</TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">{h.shares.toFixed(4)}</TableCell>
+                    <TableCell className="px-3 py-2.5 text-right tabular-nums text-foreground">${h.currentPrice.toFixed(2)}</TableCell>
+                    <TableCell className={`px-3 py-2.5 text-right tabular-nums ${plClass}`}>
+                      <span className="inline-flex items-center justify-end gap-1 text-sm font-display font-semibold">
+                        {up ? <TrendingUp className="h-3.5 w-3.5 shrink-0" /> : <TrendingDown className="h-3.5 w-3.5 shrink-0" />}
+                        {totalGain >= 0 ? "+" : "-"}${Math.abs(totalGain).toFixed(2)}
+                      </span>
+                    </TableCell>
+                    <TableCell className={`px-3 py-2.5 text-right tabular-nums text-sm font-medium ${plClass}`}>
+                      {gainPct >= 0 ? "+" : ""}
+                      {gainPct.toFixed(2)}%
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
+          </TableBody>
+        </Table>
       </div>
 
-      {/* Trade History */}
       <div className="glass-card p-5">
         <h2 className="font-display font-semibold text-foreground mb-4">Trade History</h2>
         <div className="overflow-x-auto">
@@ -91,15 +172,23 @@ export default function Portfolio() {
               </tr>
             </thead>
             <tbody>
-              {tradeHistory.map((t, i) => (
-                <tr key={i} className="border-b border-border/30 last:border-0">
-                  <td className="py-2 text-muted-foreground">{t.date}</td>
-                  <td className={`py-2 font-medium ${t.type === "BUY" ? "text-primary" : "text-destructive"}`}>{t.type}</td>
-                  <td className="py-2 font-display font-semibold text-foreground">{t.symbol}</td>
-                  <td className="py-2 text-right text-foreground">{t.shares}</td>
-                  <td className="py-2 text-right text-foreground">${t.price.toFixed(2)}</td>
+              {transactions.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-muted-foreground">
+                    No trades yet.
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                transactions.map((t) => (
+                  <tr key={t.id} className="border-b border-border/30 last:border-0">
+                    <td className="py-2 text-muted-foreground">{new Date(t.recorded_at).toLocaleString()}</td>
+                    <td className={`py-2 font-medium ${t.type === "BUY" ? "text-primary" : "text-destructive"}`}>{t.type}</td>
+                    <td className="py-2 font-display font-semibold text-foreground">{t.stock_symbol}</td>
+                    <td className="py-2 text-right text-foreground">{Number(num(t.shares)).toFixed(4)}</td>
+                    <td className="py-2 text-right text-foreground">${num(t.prices).toFixed(2)}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
