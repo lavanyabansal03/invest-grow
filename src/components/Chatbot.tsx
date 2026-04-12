@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Square, X, Send } from "lucide-react";
+import { Loader2, Mic, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { sendMessageToGemini, sendVoiceMessageToGemini, ChatMessage as GeminiMessage } from "@/lib/gemini";
+import { sendMessageToGemini, ChatMessage as GeminiMessage } from "@/lib/gemini";
 import { synthesizeAssistantSpeech } from "@/lib/elevenlabs";
 import { NeutralCoinMascot } from "@/components/NeutralCoinMascot";
 import { useToast } from "@/hooks/use-toast";
@@ -19,31 +19,18 @@ interface ChatbotProps {
   onClose: () => void;
 }
 
-const MAX_RECORDING_MS = 120_000;
-const MIN_RECORDING_BYTES = 800;
-const MAX_VOICE_BYTES = 12 * 1024 * 1024;
+/** After this much quiet time since the last speech result, we send the transcript to Gemini. */
+const SILENCE_COMMIT_MS = 1400;
+const MIN_UTTERANCE_CHARS = 2;
 
-function pickRecorderMimeType(): string | undefined {
-  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
-  for (const c of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) {
-      return c;
-    }
-  }
-  return undefined;
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => {
-      const s = r.result as string;
-      const i = s.indexOf(",");
-      resolve(i >= 0 ? s.slice(i + 1) : s);
-    };
-    r.onerror = () => reject(new Error("Failed to read recording"));
-    r.readAsDataURL(blob);
-  });
+function createSpeechRecognition(): SpeechRecognition | null {
+  const w = window as unknown as {
+    SpeechRecognition?: new () => SpeechRecognition;
+    webkitSpeechRecognition?: new () => SpeechRecognition;
+  };
+  const Ctor = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  if (!Ctor) return null;
+  return new Ctor();
 }
 
 export function Chatbot({ isOpen, onClose }: ChatbotProps) {
@@ -58,7 +45,8 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
   ]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+  /** Hands-free: listen continuously, send on natural pauses, then listen again. */
+  const [liveSession, setLiveSession] = useState(false);
   const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
   const [micBusy, setMicBusy] = useState(false);
 
@@ -67,14 +55,19 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     messagesRef.current = messages;
   }, [messages]);
 
+  const liveSessionRef = useRef(false);
+  useEffect(() => {
+    liveSessionRef.current = liveSession;
+  }, [liveSession]);
+
+  const voiceBusyRef = useRef(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const committedFinalRef = useRef("");
+  const lastInterimRef = useRef("");
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  /** When true, `MediaRecorder` `onstop` only cleans up — no Gemini / ElevenLabs (e.g. panel closed). */
-  const suppressVoiceUploadRef = useRef(false);
 
   const stopPlayback = useCallback(() => {
     if (audioRef.current) {
@@ -89,46 +82,46 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     }
   }, []);
 
-  const clearRecordingTimer = useCallback(() => {
-    if (maxDurationTimerRef.current != null) {
-      clearTimeout(maxDurationTimerRef.current);
-      maxDurationTimerRef.current = null;
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current != null) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
     }
   }, []);
 
-  const stopMediaCapture = useCallback(() => {
-    clearRecordingTimer();
-    suppressVoiceUploadRef.current = true;
-    const rec = recorderRef.current;
-    if (rec && (rec.state === "recording" || rec.state === "paused")) {
+  const stopSpeechRecognition = useCallback(() => {
+    clearSilenceTimer();
+    const r = recognitionRef.current;
+    if (!r) return;
+    try {
+      r.stop();
+    } catch {
       try {
-        rec.stop();
+        r.abort();
       } catch {
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        chunksRef.current = [];
-        recorderRef.current = null;
-        setIsRecording(false);
-        suppressVoiceUploadRef.current = false;
+        /* noop */
       }
-    } else {
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-      chunksRef.current = [];
-      recorderRef.current = null;
-      setIsRecording(false);
-      suppressVoiceUploadRef.current = false;
     }
-  }, [clearRecordingTimer]);
+  }, [clearSilenceTimer]);
+
+  const tearDownLiveSession = useCallback(() => {
+    liveSessionRef.current = false;
+    clearSilenceTimer();
+    committedFinalRef.current = "";
+    lastInterimRef.current = "";
+    stopSpeechRecognition();
+    recognitionRef.current = null;
+    setLiveSession(false);
+    setMicBusy(false);
+  }, [clearSilenceTimer, stopSpeechRecognition]);
 
   useEffect(() => {
     if (!isOpen) {
       stopPlayback();
-      stopMediaCapture();
+      tearDownLiveSession();
       setIsVoiceProcessing(false);
-      setMicBusy(false);
     }
-  }, [isOpen, stopMediaCapture, stopPlayback]);
+  }, [isOpen, stopPlayback, tearDownLiveSession]);
 
   const playElevenLabs = useCallback(
     async (text: string) => {
@@ -154,176 +147,216 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     [stopPlayback, toast],
   );
 
-  const finishVoiceTurn = useCallback(
-    async (blob: Blob, mimeType: string) => {
-      setIsVoiceProcessing(true);
+  const submitLiveUtteranceRef = useRef<(transcript: string) => Promise<void>>(async () => {});
+
+  const startSpeechRecognition = useCallback(() => {
+    const existing = recognitionRef.current;
+    if (existing) {
       try {
-        if (blob.size < MIN_RECORDING_BYTES) {
-          toast({
-            title: "Recording too short",
-            description: "Speak a bit longer, then tap the mic again to stop and send.",
-            variant: "destructive",
-          });
-          return;
+        existing.start();
+      } catch {
+        /* already started */
+      }
+      return;
+    }
+
+    const rec = createSpeechRecognition();
+    if (!rec) {
+      toast({
+        title: "Live voice not supported",
+        description: "Try Chrome or Edge — this browser does not support continuous speech recognition.",
+        variant: "destructive",
+      });
+      tearDownLiveSession();
+      return;
+    }
+
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = typeof navigator !== "undefined" && navigator.language ? navigator.language : "en-US";
+    rec.maxAlternatives = 1;
+
+    const scheduleCommit = () => {
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(() => {
+        silenceTimerRef.current = null;
+        const finals = committedFinalRef.current.trim();
+        const interim = lastInterimRef.current.trim();
+        const combined = `${finals}${finals && interim ? " " : ""}${interim}`.trim();
+        committedFinalRef.current = "";
+        lastInterimRef.current = "";
+        if (combined.length < MIN_UTTERANCE_CHARS) return;
+        if (voiceBusyRef.current || !liveSessionRef.current) return;
+        void submitLiveUtteranceRef.current(combined);
+      }, SILENCE_COMMIT_MS);
+    };
+
+    rec.onresult = (event: SpeechRecognitionEvent) => {
+      let newFinal = "";
+      let newInterim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const row = event.results[i];
+        const piece = row[0]?.transcript ?? "";
+        if (row.isFinal) newFinal += piece;
+        else newInterim += piece;
+      }
+      if (newFinal) {
+        committedFinalRef.current += newFinal;
+        lastInterimRef.current = "";
+      } else if (newInterim) {
+        lastInterimRef.current = newInterim;
+      }
+      scheduleCommit();
+    };
+
+    rec.onerror = (ev: SpeechRecognitionErrorEvent) => {
+      if (ev.error === "not-allowed") {
+        toast({
+          title: "Microphone blocked",
+          description: "Allow the microphone for this site to use live voice.",
+          variant: "destructive",
+        });
+        tearDownLiveSession();
+        return;
+      }
+      if (ev.error === "no-speech" || ev.error === "aborted") {
+        return;
+      }
+      if (ev.error === "network") {
+        toast({ title: "Speech recognition", description: "Network error from the speech service.", variant: "destructive" });
+      }
+    };
+
+    rec.onend = () => {
+      if (!liveSessionRef.current) return;
+      if (voiceBusyRef.current) return;
+      window.setTimeout(() => {
+        if (!liveSessionRef.current || voiceBusyRef.current) return;
+        try {
+          rec.start();
+        } catch {
+          /* ignore */
         }
-        if (blob.size > MAX_VOICE_BYTES) {
-          toast({
-            title: "Recording too large",
-            description: "Try a shorter question (under about 2 minutes).",
-            variant: "destructive",
-          });
-          return;
-        }
-        const b64 = await blobToBase64(blob);
+      }, 160);
+    };
+
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+    } catch {
+      toast({ title: "Could not start listening", description: "Try again or refresh the page.", variant: "destructive" });
+      tearDownLiveSession();
+    }
+  }, [clearSilenceTimer, tearDownLiveSession, toast]);
+
+  const submitLiveUtterance = useCallback(
+    async (transcript: string) => {
+      const text = transcript.replace(/\s+/g, " ").trim();
+      if (text.length < MIN_UTTERANCE_CHARS) return;
+
+      voiceBusyRef.current = true;
+      stopSpeechRecognition();
+      setIsVoiceProcessing(true);
+
+      const userMessage: ChatMessage = {
+        id: `lv-${Date.now()}`,
+        content: text,
+        isUser: true,
+        timestamp: new Date(),
+      };
+
+      try {
+        setMessages((prev) => [...prev, userMessage]);
+
         const prior: GeminiMessage[] = messagesRef.current
-          .filter((msg) => msg.id !== "1")
+          .filter((msg) => msg.id !== "1" && msg.id !== userMessage.id)
           .map((msg) => ({
             role: msg.isUser ? "user" : "model",
             parts: [{ text: msg.content }],
           }));
 
-        const response = await sendVoiceMessageToGemini(prior, b64, mimeType);
+        prior.push({
+          role: "user",
+          parts: [{ text: userMessage.content }],
+        });
 
-        const voiceUser: ChatMessage = {
-          id: `v-${Date.now()}`,
-          content: "Voice message",
-          isUser: true,
-          timestamp: new Date(),
-        };
+        const response = await sendMessageToGemini(prior);
+
         const botMessage: ChatMessage = {
-          id: `a-${Date.now() + 1}`,
+          id: `la-${Date.now() + 1}`,
           content: response,
           isUser: false,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, voiceUser, botMessage]);
+        setMessages((prev) => [...prev, botMessage]);
         await playElevenLabs(response);
-      } catch (e: unknown) {
-        console.error("Voice chat error:", e);
-        const msg =
-          e instanceof Error ? e.message : "Could not process your voice message. Try again or type instead.";
-        toast({ title: "Voice message failed", description: msg, variant: "destructive" });
+      } catch (e) {
+        console.error("Live voice chat error:", e);
         const errBubble: ChatMessage = {
-          id: `e-${Date.now()}`,
-          content: "Sorry — I could not process that voice message. Try again or use text.",
+          id: `le-${Date.now()}`,
+          content: "Sorry — I could not answer that. Try again or type your question.",
           isUser: false,
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errBubble]);
         await playElevenLabs(errBubble.content);
       } finally {
+        voiceBusyRef.current = false;
         setIsVoiceProcessing(false);
+        if (liveSessionRef.current) {
+          startSpeechRecognition();
+        }
       }
     },
-    [playElevenLabs, toast],
+    [playElevenLabs, startSpeechRecognition, stopSpeechRecognition],
   );
 
-  const startRecording = useCallback(async () => {
-    if (isRecording || isVoiceProcessing || isLoading) return;
-    if (!navigator.mediaDevices?.getUserMedia) {
-      toast({
-        title: "Microphone not available",
-        description: "Use https:// or localhost with a supported browser.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (typeof MediaRecorder === "undefined") {
-      toast({
-        title: "Recording not supported",
-        description: "This browser does not support MediaRecorder for voice messages.",
-        variant: "destructive",
-      });
-      return;
-    }
+  submitLiveUtteranceRef.current = submitLiveUtterance;
 
+  const toggleLiveSession = useCallback(async () => {
+    if (liveSession) {
+      tearDownLiveSession();
+      stopPlayback();
+      return;
+    }
+    if (!createSpeechRecognition()) {
+      toast({
+        title: "Live voice not available",
+        description: "Use Chrome or Edge on https or localhost.",
+        variant: "destructive",
+      });
+      return;
+    }
     setMicBusy(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-
-      const mimeChoice = pickRecorderMimeType();
-      const rec = mimeChoice ? new MediaRecorder(stream, { mimeType: mimeChoice }) : new MediaRecorder(stream);
-      recorderRef.current = rec;
-      suppressVoiceUploadRef.current = false;
-
-      rec.ondataavailable = (ev) => {
-        if (ev.data && ev.data.size > 0) {
-          chunksRef.current.push(ev.data);
-        }
-      };
-
-      rec.onerror = () => {
-        toast({ title: "Recording error", description: "The microphone recorder stopped unexpectedly.", variant: "destructive" });
-        stopMediaCapture();
-      };
-
-      rec.onstop = () => {
-        clearRecordingTimer();
-        const suppress = suppressVoiceUploadRef.current;
-        suppressVoiceUploadRef.current = false;
-        const mime = rec.mimeType || mimeChoice || "audio/webm";
-        const parts = chunksRef.current.slice();
-        chunksRef.current = [];
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-        recorderRef.current = null;
-        setIsRecording(false);
-        if (suppress) {
-          return;
-        }
-        const finalBlob = new Blob(parts, { type: mime });
-        void finishVoiceTurn(finalBlob, mime);
-      };
-
-      maxDurationTimerRef.current = setTimeout(() => {
-        const active = recorderRef.current;
-        if (active?.state === "recording") {
-          suppressVoiceUploadRef.current = false;
-          try {
-            active.stop();
-          } catch {
-            /* noop */
-          }
-        }
-      }, MAX_RECORDING_MS);
-
-      rec.start(250);
-      setIsRecording(true);
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      }
     } catch (e: unknown) {
       const name = e instanceof DOMException ? e.name : "";
       const description =
         name === "NotAllowedError"
-          ? "Allow microphone access in the browser prompt or site settings."
-          : name === "NotFoundError"
-            ? "No microphone was found."
-            : e instanceof Error
-              ? e.message
-              : "Could not access the microphone.";
-      toast({ title: "Microphone permission needed", description, variant: "destructive" });
-      stopMediaCapture();
+          ? "Allow microphone access to use live voice."
+          : e instanceof Error
+            ? e.message
+            : "Could not access the microphone.";
+      toast({ title: "Microphone needed", description, variant: "destructive" });
+      setMicBusy(false);
+      return;
     } finally {
       setMicBusy(false);
     }
-  }, [clearRecordingTimer, finishVoiceTurn, isLoading, isRecording, isVoiceProcessing, stopMediaCapture, toast]);
 
-  const toggleMicRecording = useCallback(() => {
-    if (isVoiceProcessing || micBusy) return;
-    if (isRecording) {
-      suppressVoiceUploadRef.current = false;
-      try {
-        recorderRef.current?.stop();
-      } catch {
-        stopMediaCapture();
-      }
-      return;
-    }
-    void startRecording();
-  }, [isRecording, isVoiceProcessing, micBusy, startRecording, stopMediaCapture]);
+    liveSessionRef.current = true;
+    setLiveSession(true);
+    committedFinalRef.current = "";
+    lastInterimRef.current = "";
+    window.setTimeout(() => startSpeechRecognition(), 0);
+  }, [liveSession, startSpeechRecognition, tearDownLiveSession, toast, stopPlayback]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading || isRecording || isVoiceProcessing) return;
+    if (!inputValue.trim() || isLoading || isVoiceProcessing) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -381,7 +414,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     }
   };
 
-  const composerBusy = isLoading || isVoiceProcessing || isRecording;
+  const composerBusy = isLoading || isVoiceProcessing;
 
   return (
     <AnimatePresence>
@@ -407,7 +440,9 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
                 <NeutralCoinMascot className="scale-[0.9] translate-y-4" />
                 <div>
                   <h3 className="font-display font-semibold text-foreground text-lg ml-7">AI Assistant</h3>
-                  <p className="text-sm text-muted-foreground ml-4">Tap mic to speak · text or voice</p>
+                  <p className="text-sm text-muted-foreground ml-4">
+                    {liveSession ? "Live — speak naturally; pauses send automatically." : "Type or turn on live voice."}
+                  </p>
                 </div>
               </div>
               <Button variant="ghost" size="sm" onClick={onClose} className="-mt-18">
@@ -439,7 +474,12 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
               ))}
             </div>
 
-            <div className="p-4 border-t border-border">
+            <div className="p-4 border-t border-border space-y-2">
+              {liveSession && (
+                <p className="text-[11px] text-muted-foreground text-center">
+                  {isVoiceProcessing ? "Thinking and speaking…" : "Listening — pause briefly after you speak to send."}
+                </p>
+              )}
               <div className="flex gap-2 items-center">
                 <input
                   type="text"
@@ -452,25 +492,23 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
                 />
                 <Button
                   type="button"
-                  variant={isRecording ? "destructive" : "outline"}
+                  variant={liveSession ? "default" : "outline"}
                   size="sm"
-                  className="shrink-0 h-9 w-9 p-0"
-                  disabled={isLoading || isVoiceProcessing || micBusy}
-                  aria-pressed={isRecording}
-                  aria-label={isRecording ? "Stop recording and send" : "Record voice message"}
+                  className={`shrink-0 h-9 w-9 p-0 ${liveSession && !isVoiceProcessing ? "animate-pulse" : ""}`}
+                  disabled={isLoading || micBusy}
+                  aria-pressed={liveSession}
+                  aria-label={liveSession ? "Stop live voice" : "Start live voice"}
                   title={
-                    isRecording
-                      ? "Stop — send recording to the assistant (then you will hear the reply)."
-                      : "Record — tap again to stop and send your voice to Gemini."
+                    liveSession
+                      ? "Stop live voice"
+                      : "Live voice — continuous listening; pauses send to Gemini and you hear the reply."
                   }
-                  onClick={() => void toggleMicRecording()}
+                  onClick={() => void toggleLiveSession()}
                 >
                   {micBusy ? (
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   ) : isVoiceProcessing ? (
-                    <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />
-                  ) : isRecording ? (
-                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+                    <Loader2 className="h-4 w-4 text-primary-foreground animate-spin" aria-hidden />
                   ) : (
                     <Mic className="h-4 w-4" aria-hidden />
                   )}
