@@ -9,8 +9,10 @@ import Onboarding from "./pages/Onboarding";
 import AppLayout from "./components/AppLayout";
 import Dashboard from "./pages/Dashboard";
 import Market from "./pages/Market";
+import MarketStock from "./pages/MarketStock";
 import Portfolio from "./pages/Portfolio";
 import Leaderboard from "./pages/Leaderboard";
+import News from "./pages/News";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -32,7 +34,9 @@ const App = () => (
           <Route path="/onboarding" element={<Onboarding />} />
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/market/:symbol" element={<MarketStock />} />
             <Route path="/market" element={<Market />} />
+            <Route path="/news" element={<News />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/watchlist" element={<Navigate to="/market" replace />} />
             <Route path="/leaderboard" element={<Leaderboard />} />

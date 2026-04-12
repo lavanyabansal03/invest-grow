@@ -147,12 +147,76 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Products & Info Section */}
+      <section className="py-16 px-6 bg-card/50">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-12">
+            {/* Resources */}
+            <div>
+              <h3 className="font-display font-semibold text-foreground mb-6">Resources</h3>
+              <div className="space-y-4">
+                <div>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    <a href="#" className="hover:text-foreground transition-colors">Supabase</a><br />
+                    <a href="#" className="hover:text-foreground transition-colors">FinHub</a>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Contacts */}
+            <div>
+              <h3 className="font-display font-semibold text-foreground mb-6">Contacts</h3>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li>
+                  <span className="font-medium text-foreground">Email:</span>
+                  <br />
+                  <a href="mailto:hello@papertrade.com" className="hover:text-foreground transition-colors">hello@papertrade.com</a>
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Support:</span>
+                  <br />
+                  <a href="mailto:support@papertrade.com" className="hover:text-foreground transition-colors">support@papertrade.com</a>
+                </li>
+                <li>
+                  <span className="font-medium text-foreground">Phone:</span>
+                  <br />
+                  <a href="tel:+1234567890" className="hover:text-foreground transition-colors">+1 (234) 567-890</a>
+                </li>
+              </ul>
+            </div>
+
+            {/* About */}
+            <div>
+              <h3 className="font-display font-semibold text-foreground mb-6">About</h3>
+              <ul className="space-y-3 text-sm text-muted-foreground">
+                <li>
+                  <a href="#" className="hover:text-foreground transition-colors">About PaperTrade</a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-foreground transition-colors">Our Mission</a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-foreground transition-colors">Privacy Policy</a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-foreground transition-colors">Terms of Service</a>
+                </li>
+                <li>
+                  <a href="#" className="hover:text-foreground transition-colors">Contact Us</a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-border/50 py-8 px-6">
         <div className="max-w-6xl mx-auto flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-primary" />
-            <span className="font-display font-semibold">Fintor</span>
+            <span className="font-display font-semibold">Papertrade</span>
           </div>
           <p>Virtual trading platform for learning. Not financial advice.</p>
         </div>
