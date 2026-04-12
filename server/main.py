@@ -6,9 +6,33 @@ import requests
 import os
 from dotenv import load_dotenv
 
-# Load .env file from the root directory
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path)
+
+def _repo_root() -> str:
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def _load_env() -> str:
+    """Load `.env` from repo root (same FINNHUB_API_KEY as prices). Root wins over existing env."""
+    root = _repo_root()
+    primary = os.path.join(root, ".env")
+    if os.path.isfile(primary):
+        load_dotenv(primary, override=True)
+    else:
+        load_dotenv()
+    secondary = os.path.join(root, "server", ".env")
+    if os.path.isfile(secondary):
+        load_dotenv(secondary, override=False)
+    return primary
+
+
+_ENV_PATH = _load_env()
+
+
+def finnhub_token() -> str:
+    raw = (os.getenv("FINNHUB_API_KEY") or "").strip()
+    if raw.startswith("\ufeff"):
+        raw = raw.lstrip("\ufeff").strip()
+    return raw
 
 app = Flask(__name__)
 CORS(
@@ -24,8 +48,7 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
-API_KEY = os.getenv('FINNHUB_API_KEY')
+FINNHUB_BASE_URL = "https://finnhub.io/api/v1"
 
 # macOS Monterey+ often binds AirPlay to :5000; it answers HTTP with 403 — not Flask.
 BACKEND_DEFAULT_PORT = 5050
@@ -45,13 +68,42 @@ def _listen_port() -> int:
     return p
 
 
-if not API_KEY:
-    print("WARNING: FINNHUB_API_KEY is not set in the .env file.")
+def _parse_finnhub_json(response: requests.Response):
+    try:
+        return response.json()
+    except ValueError:
+        snippet = (response.text or "")[:240].replace("\n", " ")
+        raise ValueError(f"Non-JSON response from Finnhub (HTTP {response.status_code}): {snippet}") from None
+
+
+def _http_error_payload(exc: requests.HTTPError) -> tuple[dict, int]:
+    resp = exc.response
+    code = resp.status_code if resp is not None else 502
+    detail = str(exc)
+    if resp is not None:
+        try:
+            err_body = resp.json()
+            if isinstance(err_body, dict) and err_body.get("error"):
+                detail = str(err_body["error"])
+        except (ValueError, TypeError):
+            pass
+    out = code if 400 <= code < 600 else 502
+    return ({"error": "Finnhub error", "details": detail}, out)
+
+
+if not finnhub_token():
+    print(
+        "WARNING: FINNHUB_API_KEY is empty after loading env. "
+        f"Expected it in: {_ENV_PATH if os.path.isfile(_ENV_PATH) else '(no .env at repo root — create one or export FINNHUB_API_KEY)'}"
+    )
+else:
+    print(f"Finnhub: FINNHUB_API_KEY loaded ({len(finnhub_token())} chars)")
 
 
 @app.route('/api/stocks/search', methods=['GET'])
 def search_stocks():
-    if not API_KEY:
+    token = finnhub_token()
+    if not token:
         return jsonify({"error": "FINNHUB_API_KEY is not configured on the server", "result": []}), 503
     q = (request.args.get("q") or "").strip()
     if len(q) < 1:
@@ -61,37 +113,101 @@ def search_stocks():
     try:
         response = requests.get(
             f"{FINNHUB_BASE_URL}/search",
-            params={"q": q, "token": API_KEY},
+            params={"q": q, "token": token},
             timeout=15,
         )
         response.raise_for_status()
-        return jsonify(response.json())
-    except requests.RequestException as e:
+        return jsonify(_parse_finnhub_json(response))
+    except requests.HTTPError as e:
+        body, code = _http_error_payload(e)
+        body["result"] = []
+        return jsonify(body), code
+    except (requests.RequestException, ValueError) as e:
         return jsonify({"error": "Failed to search symbols", "details": str(e), "result": []}), 500
 
 
 @app.route('/api/stocks/quote/<symbol>', methods=['GET'])
 def get_quote(symbol):
-    if not API_KEY:
+    token = finnhub_token()
+    if not token:
         return jsonify({"error": "FINNHUB_API_KEY is not configured on the server"}), 503
     try:
-        response = requests.get(f"{FINNHUB_BASE_URL}/quote", params={"symbol": symbol, "token": API_KEY})
+        response = requests.get(
+            f"{FINNHUB_BASE_URL}/quote",
+            params={"symbol": symbol, "token": token},
+            timeout=15,
+        )
         response.raise_for_status()
-        return jsonify(response.json())
-    except requests.RequestException as e:
+        return jsonify(_parse_finnhub_json(response))
+    except requests.HTTPError as e:
+        body, code = _http_error_payload(e)
+        body["error"] = "Finnhub quote error"
+        return jsonify(body), code
+    except (requests.RequestException, ValueError) as e:
         return jsonify({"error": "Failed to fetch stock quote", "details": str(e)}), 500
 
 
 @app.route('/api/stocks/profile/<symbol>', methods=['GET'])
 def get_profile(symbol):
-    if not API_KEY:
+    token = finnhub_token()
+    if not token:
         return jsonify({"error": "FINNHUB_API_KEY is not configured on the server"}), 503
     try:
-        response = requests.get(f"{FINNHUB_BASE_URL}/stock/profile2", params={"symbol": symbol, "token": API_KEY})
+        response = requests.get(
+            f"{FINNHUB_BASE_URL}/stock/profile2",
+            params={"symbol": symbol, "token": token},
+            timeout=15,
+        )
         response.raise_for_status()
-        return jsonify(response.json())
-    except requests.RequestException as e:
+        return jsonify(_parse_finnhub_json(response))
+    except requests.HTTPError as e:
+        body, code = _http_error_payload(e)
+        return jsonify(body), code
+    except (requests.RequestException, ValueError) as e:
         return jsonify({"error": "Failed to fetch company profile", "details": str(e)}), 500
+
+
+NEWS_CATEGORIES = frozenset({"general", "forex", "crypto", "merger"})
+
+
+def _parse_min_id(raw: str | None) -> int:
+    """Finnhub /news minId — only news after this id; default 0."""
+    if raw is None or str(raw).strip() == "":
+        return 0
+    try:
+        v = int(str(raw).strip(), 10)
+    except ValueError:
+        return 0
+    if v < 0:
+        return 0
+    return min(v, 2_000_000_000)
+
+
+@app.route('/api/stocks/news', methods=['GET'])
+def market_news():
+    """Proxy Finnhub GET /news (category required; minId optional)."""
+    token = finnhub_token()
+    if not token:
+        return jsonify({"error": "FINNHUB_API_KEY is not configured on the server"}), 503
+    raw = (request.args.get("category") or "general").strip().lower()
+    category = raw if raw in NEWS_CATEGORIES else "general"
+    min_id = _parse_min_id(request.args.get("minId"))
+    try:
+        response = requests.get(
+            f"{FINNHUB_BASE_URL}/news",
+            params={"category": category, "minId": min_id, "token": token},
+            timeout=15,
+        )
+        response.raise_for_status()
+        data = _parse_finnhub_json(response)
+        if not isinstance(data, list):
+            return jsonify({"error": "Unexpected Finnhub response", "details": "expected a JSON array"}), 502
+        return jsonify(data)
+    except requests.HTTPError as e:
+        body, code = _http_error_payload(e)
+        return jsonify(body), code
+    except (requests.RequestException, ValueError) as e:
+        return jsonify({"error": "Failed to fetch market news", "details": str(e)}), 500
 
 
 if __name__ == '__main__':
