@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Mic, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { sendMessageToGemini, ChatMessage as GeminiMessage } from "@/lib/gemini";
-import { synthesizeAssistantSpeech } from "@/lib/elevenlabs";
+import { sendMessageToGemini, synthesizeGeminiTts, ChatMessage as GeminiMessage } from "@/lib/gemini";
 import { NeutralCoinMascot } from "@/components/NeutralCoinMascot";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,6 +21,12 @@ interface ChatbotProps {
 /** After this much quiet time since the last speech result, we send the transcript to Gemini. */
 const SILENCE_COMMIT_MS = 1400;
 const MIN_UTTERANCE_CHARS = 2;
+/** Assistant text (and voice) only appears after at least this long since the user sent their question. */
+const REPLY_DISPLAY_DELAY_MS = 2000;
+
+function delayReplyDisplay(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, REPLY_DISPLAY_DELAY_MS));
+}
 
 function createSpeechRecognition(): SpeechRecognition | null {
   const w = window as unknown as {
@@ -123,13 +128,13 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
     }
   }, [isOpen, stopPlayback, tearDownLiveSession]);
 
-  const playElevenLabs = useCallback(
+  const playVoiceReply = useCallback(
     async (text: string) => {
       const t = text.trim();
       if (!t) return;
       try {
         stopPlayback();
-        const blob = await synthesizeAssistantSpeech(t);
+        const blob = await synthesizeGeminiTts(t);
         const url = URL.createObjectURL(blob);
         objectUrlRef.current = url;
         const audio = new Audio(url);
@@ -139,7 +144,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
         };
         await audio.play();
       } catch (e: unknown) {
-        const description = e instanceof Error ? e.message : "Check Flask and ElevenLabs env.";
+        const description = e instanceof Error ? e.message : "Check Gemini API key and TTS model in .env.";
         toast({ title: "Voice reply failed", description, variant: "destructive" });
         stopPlayback();
       }
@@ -280,7 +285,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
           parts: [{ text: userMessage.content }],
         });
 
-        const response = await sendMessageToGemini(prior);
+        const [response] = await Promise.all([sendMessageToGemini(prior), delayReplyDisplay()]);
 
         const botMessage: ChatMessage = {
           id: `la-${Date.now() + 1}`,
@@ -289,9 +294,10 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, botMessage]);
-        await playElevenLabs(response);
+        await playVoiceReply(response);
       } catch (e) {
         console.error("Live voice chat error:", e);
+        await delayReplyDisplay();
         const errBubble: ChatMessage = {
           id: `le-${Date.now()}`,
           content: "Sorry — I could not answer that. Try again or type your question.",
@@ -299,7 +305,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
           timestamp: new Date(),
         };
         setMessages((prev) => [...prev, errBubble]);
-        await playElevenLabs(errBubble.content);
+        await playVoiceReply(errBubble.content);
       } finally {
         voiceBusyRef.current = false;
         setIsVoiceProcessing(false);
@@ -308,7 +314,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
         }
       }
     },
-    [playElevenLabs, startSpeechRecognition, stopSpeechRecognition],
+    [playVoiceReply, startSpeechRecognition, stopSpeechRecognition],
   );
 
   submitLiveUtteranceRef.current = submitLiveUtterance;
@@ -382,7 +388,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
         parts: [{ text: userMessage.content }],
       });
 
-      const response = await sendMessageToGemini(geminiMessages);
+      const [response] = await Promise.all([sendMessageToGemini(geminiMessages), delayReplyDisplay()]);
 
       const botMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -394,6 +400,7 @@ export function Chatbot({ isOpen, onClose }: ChatbotProps) {
       setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
       console.error("Chat error:", error);
+      await delayReplyDisplay();
       const spoken = "Sorry, I'm having trouble responding right now. Please try again.";
       const errorMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
