@@ -1,4 +1,4 @@
-# Fintor (invest-grow)
+# Fintor 
 
 **Fintor** is a gamified paper-trading web app: users sign up, get a virtual cash balance from onboarding, then buy and sell U.S. stocks against **live quotes** while an **AI assistant** (Google Gemini) explains concepts. Market data and news are proxied through a small **Flask** backend so API keys stay off the browser; accounts, holdings, and history live in **Supabase**.
 
